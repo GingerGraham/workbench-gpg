@@ -1,0 +1,27 @@
+# .dotfiles-sync.yml — workbench-gpg
+#
+# Ecosystem module (workbench-core ARCHITECTURE.md §2/§3): GPG key lifecycle
+# management. Meaningless standalone — depends on workbench-core's loader,
+# Core API (elevation/_read_prompt/_str_lower, platform facts).
+#
+# See contracts/manifest-spec.md (in workbench-core) for the full field
+# reference.
+version: 1
+branch: main
+
+core_api: ">=1.1 <2.0"
+sync:
+  enabled: true
+
+register:
+  shell:
+    - src: shell/gpg.sh
+      tier: tools
+    - src: shell/gpg-management.sh
+      tier: lazy
+  installers:
+    - src: shell/installers.sh
+  getters:
+    - name: gpg
+      function: get-gpg-functions
+      label: "GPG day-to-day and key-lifecycle helpers"
