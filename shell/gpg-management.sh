@@ -122,8 +122,11 @@ _gpg_bw_logged_in() {
         return 1
     fi
 
+    # Portable extraction — grep -P (PCRE lookbehind) is GNU-only and
+    # errors on BSD grep (macOS default). sed's basic capture-group syntax
+    # works identically on both.
     local bw_status
-    bw_status="$(bw status 2>/dev/null | grep -oP '(?<="status":")[^"]+')"
+    bw_status="$(bw status 2>/dev/null | sed -n 's/.*"status":"\([^"]*\)".*/\1/p')"
 
     if [[ "${bw_status}" != "unlocked" ]]; then
         log_error "Bitwarden vault is not unlocked (status: ${bw_status:-unknown})"
@@ -223,6 +226,7 @@ gpg-create-key() {
     echo "  Master key expiry."
     echo "  The master [C] key is used only to certify subkeys and is stored"
     echo "  offline after creation. A very long expiry or no expiry is fine here."
+    local master_expiry_input subkey_expiry_years
     _read_prompt "  Master key expiry (e.g. 10y, 0 for no expiry) [0]: " master_expiry_input
     master_expiry_input="${master_expiry_input:-0}"
     local master_expiry="${master_expiry_input}"
@@ -1586,7 +1590,7 @@ for i, item in enumerate(gpg_items):
 # Set the owner trust level on a key.
 # You almost always want 'ultimate' for your own keys.
 #
-# Trust levels: 1=unknown 2=none 3=marginal 4=full 5=ultimate
+# Trust levels: 2=unknown 3=none 4=marginal 5=full 6=ultimate
 #
 # Usage:
 #   gpg-trust <fingerprint> [level]    level: unknown|none|marginal|full|ultimate

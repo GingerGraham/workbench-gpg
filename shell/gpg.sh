@@ -134,7 +134,7 @@ gpg-list-signing-keys() {
     done < <(gpg --list-secret-keys --with-colons 2>/dev/null)
 
     if [[ ${found} -eq 0 ]]; then
-        echo "  No signing keys found${filter:+ matching \'${filter}\'}."
+        echo "  No signing keys found${filter:+ matching '${filter}'}."
         echo
         echo "  To create a new key set, run: gpg-create-key"
     else
