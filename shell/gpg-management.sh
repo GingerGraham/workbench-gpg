@@ -1102,6 +1102,7 @@ match = [i for i in items if i.get('name') == sys.argv[1]]
 print(match[0]['id'] if match else '')
 " "${note_name}" 2>/dev/null || true)"
 
+        # shellcheck disable=SC2155
         local note_json_file="${tmp_dir}/item_$(date +%s%N).json"
         python3 - "${note_name}" "${note_body_file}" "${note_json_file}" <<'PYEOF'
 import json, sys
@@ -1160,6 +1161,7 @@ match = [i for i in items if i.get('name') == sys.argv[1]]
 print(match[0]['id'] if match else '')
 " "${item_name}" 2>/dev/null || true)"
 
+        # shellcheck disable=SC2155
         local login_json_file="${tmp_dir}/login_$(date +%s%N).json"
         python3 - "${item_name}" "${username}" "${password}" "${login_json_file}" <<'PYEOF'
 import json, sys
@@ -1511,6 +1513,7 @@ if match:
     local rc=$?
     rm -f "${tmp_file}"
 
+    # shellcheck disable=SC2015
     [[ ${rc} -eq 0 ]] && log_info "Import complete" || log_error "Import failed"
     return ${rc}
 }
@@ -1580,6 +1583,7 @@ for i, item in enumerate(gpg_items):
     local rc=$?
     rm -f "${tmp_file}"
 
+    # shellcheck disable=SC2015
     [[ ${rc} -eq 0 ]] && log_info "Import complete" || log_error "Import failed"
     return ${rc}
 }
