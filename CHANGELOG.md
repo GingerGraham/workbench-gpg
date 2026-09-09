@@ -4,6 +4,8 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-09
+
 - Added `installed-pinentry` — reports install status to `wb tools upgrade`/
   `list --status` (workbench-core §12 D43).
 
