@@ -103,3 +103,7 @@ install-pinentry() {
         return 1
     fi
 }
+
+installed-pinentry() {
+    command -v pinentry &>/dev/null
+}
