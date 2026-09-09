@@ -34,7 +34,7 @@ _array_get() {
     if [[ -n "${ZSH_VERSION}" ]]; then
         eval "printf '%s' \"\${${_ag_arr}[${_ag_idx}]}\""
     else
-        eval "printf '%s' \"\${${_ag_arr}[$((${_ag_idx} - 1))]}\""
+        eval "printf '%s' \"\${${_ag_arr}[$((_ag_idx - 1))]}\""
     fi
 }
 
@@ -134,6 +134,7 @@ gpg-list-signing-keys() {
     done < <(gpg --list-secret-keys --with-colons 2>/dev/null)
 
     if [[ ${found} -eq 0 ]]; then
+        # shellcheck disable=SC2016
         echo "  No signing keys found${filter:+ matching '${filter}'}."
         echo
         echo "  To create a new key set, run: gpg-create-key"
