@@ -70,7 +70,7 @@ alias gpg-ls-secret="gpg-list-secret"
 #   gpg-list-signing-keys <email>    # filter to keys matching an email
 #
 # Output format:
-#   [S]  Key ID: ABCDEF1234567890  (expires: 2026-06-01)
+#   [S]  Key ID: ABCDEF1234567890  (expires: 2026-06-01)  # gitleaks:allow -- illustrative example key ID in usage docs, not a real credential
 #        UID:    Graham Watts <graham@example.com>
 #   → Pass the Key ID to git-add-project as the signing_key argument.
 gpg-list-signing-keys() {
