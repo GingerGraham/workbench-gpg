@@ -18,6 +18,13 @@ All notable changes to `workbench-gpg` are documented here.
   piloted on `workbench-git` first. See `workbench-core`'s
   `docs/decisions-log.md` D60.
 
+### Fixed
+
+- Suppressed a `gitleaks` false positive on `gpg-list-signing-keys`'s
+  usage docblock: the entropy-based `generic-api-key` rule flagged the
+  illustrative example key ID as a possible secret. Not a real
+  credential — marked with an inline `gitleaks:allow`.
+
 ## [0.2.0] - 2026-09-09
 
 - Added `installed-pinentry` — reports install status to `wb tools upgrade`/
