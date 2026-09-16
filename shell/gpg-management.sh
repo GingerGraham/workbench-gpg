@@ -54,9 +54,12 @@
 _wb_declare_availability bw gpg-export-bitwarden gpg-import-bitwarden
 _wb_declare_availability op gpg-export-1password gpg-import-1password
 
-# Every other function in this file needs gpg itself — this file has no
-# load-time guard of its own today (unlike gpg.sh), so these were
-# previously ungated even at the source level, not just the listing.
+# Every other function in this file needs gpg itself. This file has no
+# load-time guard of its own (unlike gpg.sh) — these functions are always
+# defined regardless of whether gpg is installed, they just fail when
+# actually called. These predicates only affect the *listing*: without
+# them, get-gpg-functions/wb functions would show all twelve even when
+# gpg is missing.
 _wb_declare_availability gpg gpg-create-key gpg-add-uid gpg-remove-master \
     gpg-add-subkey gpg-extend-expiry gpg-rotate-subkey gpg-revoke \
     gpg-export gpg-export-master gpg-export-subkeys gpg-import gpg-trust
