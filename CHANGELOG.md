@@ -4,6 +4,8 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-16
+
 ### Fixed
 
 - `gpg-export-bitwarden`/`gpg-export-1password` checked the target key
