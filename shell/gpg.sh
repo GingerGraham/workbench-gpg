@@ -484,9 +484,29 @@ gpg-card-status() {
     fi
 }
 
+# Functions that wrap tooling outside this module (Bitwarden/1Password/
+# GitHub/GitLab CLIs) already exit early with an install hint when that
+# tool is missing — see their own preflight checks. This hides them from
+# get-gpg-functions too when the tool isn't there, since offering a
+# command that can only ever fail is worse than not listing it.
+_gpg_functions_exclude_pattern() {
+    # Each alternative is parenthesised so the assembled pattern never starts
+    # with "-" — grep would otherwise mistake it for an option.
+    local _exclude=""
+    command -v bw   &>/dev/null || _exclude="${_exclude}|(-bitwarden$)"
+    command -v op   &>/dev/null || _exclude="${_exclude}|(-1password$)"
+    command -v gh   &>/dev/null || _exclude="${_exclude}|(-github(-|$))"
+    command -v glab &>/dev/null || _exclude="${_exclude}|(-gitlab(-|$))"
+    _exclude="${_exclude#|}"
+    if [[ -n "${_exclude}" ]]; then
+        printf '!%s' "${_exclude}"
+    fi
+}
+
 get-gpg-functions() {
     local _dir; _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    _get_functions_in "GPG functions" "" "${_dir}/gpg.sh" "${_dir}/gpg-management.sh"
+    local _exclude_pattern; _exclude_pattern="$(_gpg_functions_exclude_pattern)"
+    _get_functions_in "GPG functions" "${_exclude_pattern}" "${_dir}/gpg.sh" "${_dir}/gpg-management.sh"
     _get_aliases_in "GPG aliases" "" "${_dir}/gpg.sh" "${_dir}/gpg-management.sh"
 }
 

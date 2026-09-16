@@ -4,6 +4,24 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- `gpg-export-bitwarden`/`gpg-export-1password` checked the target key
+  existed, and prompted interactively for one when none was given,
+  before checking that `bw`/`op` was even installed — someone without
+  the CLI would pick a key first and only then hit the missing-tool
+  error. Preflight checks now run first, matching every other
+  password-manager/forge function in this module (closes #13).
+- `get-gpg-functions` listed `gpg-export-bitwarden`,
+  `gpg-import-bitwarden`, `gpg-export-1password`,
+  `gpg-import-1password`, `gpg-github-keys`, `gpg-push-github`,
+  `gpg-gitlab-keys`, and `gpg-push-gitlab` even when their respective
+  `bw`/`op`/`gh`/`glab` CLI wasn't installed. Each function still
+  exits early with an install hint if run without its tool, but
+  offering a command that can only ever fail was misleading, so the
+  listing now hides them until the dependent CLI is present (closes
+  #13).
+
 ## [0.2.1] - 2026-09-15
 
 ### Added
