@@ -1002,12 +1002,13 @@ gpg-export-bitwarden() {
         esac
     done
 
+    _gpg_require_bw   || return 1
+    _gpg_bw_logged_in || return 1
+
     if [[ -z "${fp}" ]]; then
         fp="$(_gpg_prompt_key_id "Key fingerprint to back up")"
     fi
     _gpg_require_key "${fp}" || return 1
-    _gpg_require_bw          || return 1
-    _gpg_bw_logged_in        || return 1
 
     # Qualifier: --name wins, otherwise short hostname
     local qualifier="${custom_qualifier:-$(hostname -s)}"
@@ -1277,12 +1278,13 @@ gpg-export-1password() {
         esac
     done
 
+    _gpg_require_op   || return 1
+    _gpg_op_logged_in || return 1
+
     if [[ -z "${fp}" ]]; then
         fp="$(_gpg_prompt_key_id "Key fingerprint to back up")"
     fi
     _gpg_require_key "${fp}" || return 1
-    _gpg_require_op          || return 1
-    _gpg_op_logged_in        || return 1
 
     local qualifier="${custom_qualifier:-$(hostname -s)}"
     local uid
