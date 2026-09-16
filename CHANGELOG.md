@@ -4,6 +4,19 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced this module's private `_gpg_functions_exclude_pattern`
+  workaround (a hand-rolled exclude-pattern hack in `get-gpg-functions`)
+  with `workbench-core`'s shared function-availability convention:
+  `_<name>-available` predicates declared via `_wb_declare_availability`.
+  `get-gpg-functions` now relies on `_get_functions_in`/`_get_aliases_in`
+  to gate automatically, the same as every other module. Also closes a
+  gap the old workaround didn't cover: every `gpg`-dependent function in
+  `gpg-management.sh` (which has no load-time `gpg` guard of its own,
+  unlike `gpg.sh`) is now correctly gated on `gpg` being installed, not
+  just the Bitwarden/1Password/GitHub/GitLab-dependent ones.
+
 ## [0.2.2] - 2026-09-16
 
 ### Fixed

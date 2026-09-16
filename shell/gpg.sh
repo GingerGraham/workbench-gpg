@@ -153,11 +153,11 @@ gpg-list-signing-keys() {
 # Usage:
 #   gpg-github-keys
 gpg-github-keys() {
-    if ! command -v gh &>/dev/null; then
+    _gpg-github-keys-available || {
         log_error "GitHub CLI (gh) is not installed"
         log_error "Install it with: install-gh   # workbench-git"
         return 1
-    fi
+    }
 
     if ! gh auth status &>/dev/null 2>&1; then
         log_error "GitHub CLI is not authenticated"
@@ -380,11 +380,11 @@ _gpg_resolve_signing_key() {
 # List GPG keys currently registered on the authenticated GitLab account.
 # Requires: glab CLI, authenticated via 'glab auth login'.
 gpg-gitlab-keys() {
-    if ! command -v glab &>/dev/null; then
+    _gpg-gitlab-keys-available || {
         log_error "GitLab CLI (glab) is not installed"
         log_error "Install it with: install-glab   # workbench-git"
         return 1
-    fi
+    }
 
     if ! glab auth status &>/dev/null 2>&1; then
         log_error "GitLab CLI is not authenticated"
@@ -484,29 +484,22 @@ gpg-card-status() {
     fi
 }
 
-# Functions that wrap tooling outside this module (Bitwarden/1Password/
-# GitHub/GitLab CLIs) already exit early with an install hint when that
-# tool is missing — see their own preflight checks. This hides them from
-# get-gpg-functions too when the tool isn't there, since offering a
-# command that can only ever fail is worse than not listing it.
-_gpg_functions_exclude_pattern() {
-    # Each alternative is parenthesised so the assembled pattern never starts
-    # with "-" — grep would otherwise mistake it for an option.
-    local _exclude=""
-    command -v bw   &>/dev/null || _exclude="${_exclude}|(-bitwarden$)"
-    command -v op   &>/dev/null || _exclude="${_exclude}|(-1password$)"
-    command -v gh   &>/dev/null || _exclude="${_exclude}|(-github(-|$))"
-    command -v glab &>/dev/null || _exclude="${_exclude}|(-gitlab(-|$))"
-    _exclude="${_exclude#|}"
-    if [[ -n "${_exclude}" ]]; then
-        printf '!%s' "${_exclude}"
-    fi
-}
+# Function availability predicates — consumed automatically by
+# _get_functions_in/_get_aliases_in (workbench-core) to hide functions
+# that can't actually be used on this host. See workbench-core's
+# docs/module-authoring.md, "Declaring function availability".
+_wb_declare_availability gh   gpg-github-keys gpg-push-github
+_wb_declare_availability glab gpg-gitlab-keys gpg-push-gitlab
+
+# Every other function in gpg.sh needs gpg itself (already the whole
+# file's own load-time guard — this closes the same gap for the
+# *listing*: static extraction can't see that runtime guard either).
+_wb_declare_availability gpg gpg-list gpg-list-secret gpg-list-signing-keys \
+    gpg-show gpg-verify gpg-agent-restart gpg-agent-forget gpg-card-status
 
 get-gpg-functions() {
     local _dir; _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local _exclude_pattern; _exclude_pattern="$(_gpg_functions_exclude_pattern)"
-    _get_functions_in "GPG functions" "${_exclude_pattern}" "${_dir}/gpg.sh" "${_dir}/gpg-management.sh"
+    _get_functions_in "GPG functions" "" "${_dir}/gpg.sh" "${_dir}/gpg-management.sh"
     _get_aliases_in "GPG aliases" "" "${_dir}/gpg.sh" "${_dir}/gpg-management.sh"
 }
 
