@@ -22,6 +22,26 @@
 #   gpg-github-keys       List GPG keys registered on the authenticated GitHub account
 #   gpg-gitlab-keys       List GPG keys registered on the authenticated GitLab account
 
+# Function availability predicates — consumed automatically by
+# _get_functions_in/_get_aliases_in (workbench-core) to hide functions
+# that can't actually be used on this host. See workbench-core's
+# docs/module-authoring.md, "Declaring function availability".
+#
+# Declared here, *before* the `command -v gpg` guard below, not after:
+# on a host without gpg, that guard returns out of this file immediately,
+# so anything placed after it (these declarations included) would never
+# run — and _wb_function_available's documented fallback for "no
+# predicate declared" is available, which would silently defeat this on
+# exactly the host where the gpg-gated set below most needs to fire.
+_wb_declare_availability gh   gpg-github-keys gpg-push-github
+_wb_declare_availability glab gpg-gitlab-keys gpg-push-gitlab
+
+# Every other function in gpg.sh needs gpg itself (already the whole
+# file's own load-time guard — this closes the same gap for the
+# *listing*: static extraction can't see that runtime guard either).
+_wb_declare_availability gpg gpg-list gpg-list-secret gpg-list-signing-keys \
+    gpg-show gpg-verify gpg-agent-restart gpg-agent-forget gpg-card-status
+
 command -v gpg &>/dev/null || return 0
 
 # _array_get <array_name> <1-based-index>
@@ -483,19 +503,6 @@ gpg-card-status() {
         return 1
     fi
 }
-
-# Function availability predicates — consumed automatically by
-# _get_functions_in/_get_aliases_in (workbench-core) to hide functions
-# that can't actually be used on this host. See workbench-core's
-# docs/module-authoring.md, "Declaring function availability".
-_wb_declare_availability gh   gpg-github-keys gpg-push-github
-_wb_declare_availability glab gpg-gitlab-keys gpg-push-gitlab
-
-# Every other function in gpg.sh needs gpg itself (already the whole
-# file's own load-time guard — this closes the same gap for the
-# *listing*: static extraction can't see that runtime guard either).
-_wb_declare_availability gpg gpg-list gpg-list-secret gpg-list-signing-keys \
-    gpg-show gpg-verify gpg-agent-restart gpg-agent-forget gpg-card-status
 
 get-gpg-functions() {
     local _dir; _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
