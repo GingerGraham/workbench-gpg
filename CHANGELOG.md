@@ -4,6 +4,8 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-16
+
 ### Changed
 
 - Replaced this module's private `_gpg_functions_exclude_pattern`
