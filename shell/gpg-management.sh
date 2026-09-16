@@ -42,6 +42,28 @@
 #   gpg-trust             Set owner trust level on a key
 #   gpg-push-github       Push a signing key to the authenticated GitHub account
 
+# ── Function availability predicates ──────────────────────────────────────────
+# Consumed automatically by _get_functions_in/_get_aliases_in
+# (workbench-core) to hide functions that can't actually be used on this
+# host. See workbench-core's docs/module-authoring.md, "Declaring
+# function availability". gpg-push-github/gpg-push-gitlab's predicates
+# are declared in gpg.sh alongside gpg-github-keys/gpg-gitlab-keys —
+# predicates are just functions, sourced eagerly regardless of which
+# file declares them.
+
+_wb_declare_availability bw gpg-export-bitwarden gpg-import-bitwarden
+_wb_declare_availability op gpg-export-1password gpg-import-1password
+
+# Every other function in this file needs gpg itself. This file has no
+# load-time guard of its own (unlike gpg.sh) — these functions are always
+# defined regardless of whether gpg is installed, they just fail when
+# actually called. These predicates only affect the *listing*: without
+# them, get-gpg-functions/wb functions would show all twelve even when
+# gpg is missing.
+_wb_declare_availability gpg gpg-create-key gpg-add-uid gpg-remove-master \
+    gpg-add-subkey gpg-extend-expiry gpg-rotate-subkey gpg-revoke \
+    gpg-export gpg-export-master gpg-export-subkeys gpg-import gpg-trust
+
 # ── Portability helpers ───────────────────────────────────────────────────────
 
 # _gpg_passphrase_ready_check <context_label>
@@ -1659,13 +1681,13 @@ gpg-push-github() {
     local selected_keyid="${1:-}"
 
     # ── Preflight: gh CLI present and authenticated ───────────────────────────
-    if ! command -v gh &>/dev/null; then
+    _gpg-push-github-available || {
         log_error "GitHub CLI (gh) is not installed"
         log_error "Install it with: sudo dnf install gh   # Fedora"
         log_error "                 sudo apt install gh   # Debian/Ubuntu"
         log_error "Then authenticate: gh auth login"
         return 1
-    fi
+    }
 
     local gh_user
     if ! gh_user="$(gh api user --jq '.login' 2>/dev/null)"; then
@@ -1789,12 +1811,12 @@ gpg-push-github() {
 gpg-push-gitlab() {
     local selected_keyid="${1:-}"
 
-    if ! command -v glab &>/dev/null; then
+    _gpg-push-gitlab-available || {
         log_error "GitLab CLI (glab) is not installed"
         log_error "Install it with: install-glab"
         log_error "Then authenticate: glab auth login"
         return 1
-    fi
+    }
 
     local glab_status glab_user
     if ! glab_status="$(glab auth status 2>&1)"; then
