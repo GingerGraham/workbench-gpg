@@ -4,6 +4,20 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- `gpg-push-keyserver` — publish a public signing key to a keyserver.
+  Supports `openpgp` (keys.openpgp.org) and `ubuntu`
+  (keyserver.ubuntu.com) as short aliases, a bare hostname (tried over
+  `hkps://` first, falling back to `hkp://` only if that fails, with a
+  warning at the point of fallback), or an explicit `hkps://`/`hkp://` URL
+  with no fallback added. One parametrised function rather than a
+  per-server duplicate of `gpg-push-github`/`gpg-push-gitlab`, since every
+  keyserver speaks the same protocol (those two differ because `gh`/`glab`
+  are genuinely different provider APIs). Prints a reminder when pushing
+  to keys.openpgp.org that UIDs need email verification before becoming
+  publicly searchable.
+
 ## [0.2.3] - 2026-09-16
 
 ### Changed

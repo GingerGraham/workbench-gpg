@@ -41,6 +41,7 @@
 #   gpg-rotate-subkey     Expire current subkey and generate a replacement
 #   gpg-trust             Set owner trust level on a key
 #   gpg-push-github       Push a signing key to the authenticated GitHub account
+#   gpg-push-keyserver    Publish a signing key to a keyserver
 
 # ── Function availability predicates ──────────────────────────────────────────
 # Consumed automatically by _get_functions_in/_get_aliases_in
@@ -62,7 +63,8 @@ _wb_declare_availability op gpg-export-1password gpg-import-1password
 # gpg is missing.
 _wb_declare_availability gpg gpg-create-key gpg-add-uid gpg-remove-master \
     gpg-add-subkey gpg-extend-expiry gpg-rotate-subkey gpg-revoke \
-    gpg-export gpg-export-master gpg-export-subkeys gpg-import gpg-trust
+    gpg-export gpg-export-master gpg-export-subkeys gpg-import gpg-trust \
+    gpg-push-keyserver
 
 # ── Portability helpers ───────────────────────────────────────────────────────
 
@@ -1909,4 +1911,257 @@ gpg-push-gitlab() {
     fi
 
     rm -f "${tmp_file}"
+}
+
+# ── Keyserver integration ─────────────────────────────────────────────────────
+
+# _gpg_resolve_keyserver_candidates <alias-or-host-or-url>
+# Resolve keyserver input to one or more candidate URLs to try, in order,
+# printed one per line:
+#   - 'openpgp'/'ubuntu' (case-insensitive)  -> single hkps:// candidate
+#   - explicit hkps://... or hkp://...       -> that single candidate,
+#                                                unchanged (the caller's
+#                                                protocol choice is
+#                                                honoured, no fallback
+#                                                added)
+#   - a bare hostname, no scheme             -> TWO candidates in order:
+#                                                hkps://<host>, then
+#                                                hkp://<host> -- the
+#                                                caller tries hkps first
+#                                                and only falls back to
+#                                                unencrypted hkp if that
+#                                                fails
+# Anything else (empty, whitespace, or an explicit non-keyserver scheme
+# like ftp://) is rejected outright: return 1, nothing on stdout.
+#
+# Self-contained — no Core API calls — so it can be sourced and unit
+# tested in isolation (tests/check-gpg-push-keyserver.sh).
+_gpg_resolve_keyserver_candidates() {
+    local input="${1:-}"
+    local was_nocasematch=0
+    shopt -q nocasematch && was_nocasematch=1
+    shopt -s nocasematch
+
+    local -a candidates=()
+    case "${input}" in
+        "")
+            ;;
+        openpgp)
+            candidates=("hkps://keys.openpgp.org")
+            ;;
+        ubuntu)
+            candidates=("hkps://keyserver.ubuntu.com")
+            ;;
+        hkps://*|hkp://*)
+            candidates=("${input}")
+            ;;
+        *://*)
+            # explicit but unsupported scheme (ftp://, https://, ...) --
+            # reject rather than reinterpret as a bare host
+            ;;
+        *[[:space:]]*)
+            ;;
+        *)
+            # bare hostname -- hkps first, hkp only as a fallback
+            candidates=("hkps://${input}" "hkp://${input}")
+            ;;
+    esac
+
+    [[ "${was_nocasematch}" -eq 1 ]] || shopt -u nocasematch
+
+    [[ "${#candidates[@]}" -gt 0 ]] || return 1
+    printf '%s\n' "${candidates[@]}"
+}
+
+# gpg-push-keyserver
+# Publish a public signing key to a keyserver.
+#
+# Presents the same signing-key selection as gpg-push-github/gpg-push-gitlab,
+# then either resolves the keyserver argument (alias, bare hostname, or
+# explicit URL) or prompts for one. A bare hostname is tried over hkps
+# first, falling back to unencrypted hkp only if that attempt fails, with
+# a warning printed at the point of fallback so the downgrade is visible.
+# Needs no CLI tool or authentication beyond gpg itself -- every keyserver
+# speaks the same HKP protocol, so one parametrised function covers
+# keys.openpgp.org, keyserver.ubuntu.com, and any other keyserver, rather
+# than a per-server duplicate the way gpg-push-github/gpg-push-gitlab are
+# per-provider (those differ because gh/glab are genuinely different
+# APIs; keyservers are not).
+#
+# Usage:
+#   gpg-push-keyserver                                 # interactive key + keyserver selection
+#   gpg-push-keyserver <key-id>                         # interactive keyserver selection only
+#   gpg-push-keyserver <key-id> openpgp                  # keys.openpgp.org
+#   gpg-push-keyserver <key-id> ubuntu                   # keyserver.ubuntu.com
+#   gpg-push-keyserver <key-id> my.keyserver.example     # bare host: hkps, then hkp on failure
+#   gpg-push-keyserver <key-id> hkps://my.keyserver.example
+gpg-push-keyserver() {
+    local selected_keyid="${1:-}"
+    local keyserver_input="${2:-}"
+
+    # ── Collect available signing keys ────────────────────────────────────────
+    local signing_keys
+    signing_keys="$(_gpg_collect_signing_keys)"
+
+    if [[ -z "${signing_keys}" ]]; then
+        log_error "No signing-capable keys found in local keyring"
+        log_error "Create one with: gpg-create-key"
+        return 1
+    fi
+
+    # ── Key selection ─────────────────────────────────────────────────────────
+    if [[ -n "${selected_keyid}" ]]; then
+        if ! printf '%s\n' "${signing_keys}" | cut -f1 | grep -qx "${selected_keyid}"; then
+            log_error "Key ID '${selected_keyid}' not found among local signing keys"
+            log_error "Run gpg-list-signing-keys to see available keys"
+            return 1
+        fi
+    else
+        echo
+        echo "═══════════════════════════════════════════════════════════════════"
+        echo "  Push GPG Signing Key to a Keyserver"
+        echo "═══════════════════════════════════════════════════════════════════"
+        echo
+        echo "  Available signing keys:"
+        echo
+
+        local -a menu_ids=()
+        local i=1
+        local kid klabel
+        while IFS=$'\t' read -r kid klabel; do
+            printf "  %2d)  Key ID: %s\n" "${i}" "${kid}"
+            printf "       UID:    %s\n" "${klabel}"
+            echo
+            menu_ids+=("${kid}")
+            i=$(( i + 1 ))
+        done <<< "${signing_keys}"
+
+        local choice
+        while true; do
+            _read_prompt "  Select key (1-${#menu_ids[@]}, or q to quit): " choice
+            [[ "${choice}" == "q" || "${choice}" == "Q" ]] && {
+                log_info "Aborted"
+                return 0
+            }
+            if [[ "${choice}" =~ ^[0-9]+$ ]] \
+                && (( choice >= 1 && choice <= ${#menu_ids[@]} )); then
+                selected_keyid="$(_array_get menu_ids "${choice}")"
+                break
+            fi
+            log_warn "Invalid selection — enter a number between 1 and ${#menu_ids[@]}"
+        done
+    fi
+
+    log_info "Selected key: ${selected_keyid}"
+
+    # ── Keyserver selection ────────────────────────────────────────────────────
+    # Bash-3.2-safe way to turn _gpg_resolve_keyserver_candidates' newline
+    # output into an indexed array -- no mapfile/readarray, no nameref.
+    local -a candidates=()
+    local resolve_output line
+    if [[ -n "${keyserver_input}" ]]; then
+        if ! resolve_output="$(_gpg_resolve_keyserver_candidates "${keyserver_input}")"; then
+            log_error "Unrecognised keyserver '${keyserver_input}'"
+            log_error "Use 'openpgp', 'ubuntu', a bare hostname (tried via hkps, falling"
+            log_error "back to hkp), or a full hkps://<host> / hkp://<host> URL"
+            return 1
+        fi
+        while IFS= read -r line; do
+            [[ -n "${line}" ]] && candidates+=("${line}")
+        done <<< "${resolve_output}"
+    else
+        echo
+        echo "  Select a keyserver:"
+        echo
+        echo "    1)  keys.openpgp.org      (hkps://keys.openpgp.org)"
+        echo "    2)  keyserver.ubuntu.com  (hkps://keyserver.ubuntu.com)"
+        echo "    3)  Custom host or URL"
+        echo
+
+        local ks_choice
+        while true; do
+            _read_prompt "  Select keyserver (1-3, or q to quit): " ks_choice
+            [[ "${ks_choice}" == "q" || "${ks_choice}" == "Q" ]] && {
+                log_info "Aborted"
+                return 0
+            }
+            case "${ks_choice}" in
+                1)
+                    candidates=("hkps://keys.openpgp.org")
+                    break
+                    ;;
+                2)
+                    candidates=("hkps://keyserver.ubuntu.com")
+                    break
+                    ;;
+                3)
+                    echo
+                    echo "  A bare hostname is tried over hkps:// first, falling back to"
+                    echo "  hkp:// only if that fails. Enter a full hkps://... or hkp://..."
+                    echo "  URL instead to use only that protocol."
+                    local custom_input
+                    _read_prompt "  Keyserver hostname or URL: " custom_input
+                    if resolve_output="$(_gpg_resolve_keyserver_candidates "${custom_input}")"; then
+                        candidates=()
+                        while IFS= read -r line; do
+                            [[ -n "${line}" ]] && candidates+=("${line}")
+                        done <<< "${resolve_output}"
+                        break
+                    fi
+                    log_warn "Enter a hostname, or a hkps://... / hkp://... URL"
+                    ;;
+                *)
+                    log_warn "Invalid selection — enter 1, 2, 3, or q"
+                    ;;
+            esac
+        done
+    fi
+
+    # ── Send the key ───────────────────────────────────────────────────────────
+    # Try each candidate in order. For a bare hostname this is [hkps, hkp]
+    # -- stop at the first success; only warn-and-continue past a failure
+    # when there's another candidate left to try.
+    local resolved_url="" gpg_output="" gpg_exit=1
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        case "${candidate}" in
+            hkp://*)
+                log_warn "Falling back to unencrypted hkp:// (hkps attempt failed): ${candidate}"
+                ;;
+        esac
+        log_info "Sending key ${selected_keyid} to ${candidate}..."
+        gpg_output="$(gpg --keyserver "${candidate}" --send-keys "${selected_keyid}" 2>&1)"
+        gpg_exit=$?
+        if [[ ${gpg_exit} -eq 0 ]]; then
+            resolved_url="${candidate}"
+            break
+        fi
+        log_warn "${candidate} failed (exit ${gpg_exit})"
+        [[ -n "${gpg_output}" ]] && log_warn "${gpg_output}"
+    done
+
+    if [[ -n "${resolved_url}" ]]; then
+        log_info "Key sent successfully to ${resolved_url}"
+
+        local was_nocasematch=0
+        shopt -q nocasematch && was_nocasematch=1
+        shopt -s nocasematch
+        local is_openpgp_org=false
+        [[ "${resolved_url}" == *keys.openpgp.org* ]] && is_openpgp_org=true
+        [[ "${was_nocasematch}" -eq 1 ]] || shopt -u nocasematch
+
+        if [[ "${is_openpgp_org}" == "true" ]]; then
+            echo
+            log_info "keys.openpgp.org requires each UID's email address to be verified"
+            log_info "before it becomes publicly searchable — gpg reporting success only"
+            log_info "means the key was accepted, not that it's discoverable yet. Check"
+            log_info "your inbox for a confirmation link, or manage verification at:"
+            log_info "https://keys.openpgp.org/manage"
+        fi
+    else
+        log_error "Key upload failed on every keyserver tried"
+        log_info "Check network connectivity and that dirmngr is reachable"
+        log_info "(try: gpgconf --kill dirmngr, then retry)"
+        return 1
+    fi
 }
