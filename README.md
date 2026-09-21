@@ -368,25 +368,51 @@ gpg-trust <fingerprint>
 
 ## Publishing your signing key
 
-Once your signing subkey exists, publish its public key to your git
-provider so signed commits show as verified.
+Once your signing subkey exists, publish its public key so signed commits
+show as verified (git providers) or so others can find and verify your
+identity (keyservers).
 
 ```bash
-gpg-push-github     # interactive key selection
-gpg-push-gitlab     # interactive key selection
+gpg-push-github      # interactive key selection
+gpg-push-gitlab      # interactive key selection
+gpg-push-keyserver   # interactive key and keyserver selection
 ```
 
-Both accept an explicit key ID to skip interactive selection, e.g.
-`gpg-push-github <key-id>`. Each requires the matching provider CLI
-(`workbench-git`) to be installed and authenticated first:
+All three accept an explicit key ID to skip interactive selection, e.g.
+`gpg-push-github <key-id>`. `gpg-push-github`/`gpg-push-gitlab` each
+require the matching provider CLI (`workbench-git`) to be installed and
+authenticated first:
 
 ```bash
 install-gh    && gh auth login      # for gpg-push-github
 install-glab  && glab auth login    # for gpg-push-gitlab
 ```
 
+`gpg-push-keyserver` needs nothing beyond `gpg` itself — every keyserver
+speaks the same protocol. Pass a keyserver as a second argument to skip
+its selection menu too:
+
+```bash
+gpg-push-keyserver <key-id> openpgp                       # keys.openpgp.org
+gpg-push-keyserver <key-id> ubuntu                         # keyserver.ubuntu.com
+gpg-push-keyserver <key-id> my.keyserver.example           # bare host: hkps first, hkp on failure
+gpg-push-keyserver <key-id> hkps://my.keyserver.example    # explicit protocol, no fallback
+```
+
+A bare hostname with no scheme is tried over `hkps://` first, falling
+back to `hkp://` only if that attempt fails — a warning is printed at the
+point of fallback so the downgrade to an unencrypted transport is never
+silent. Give an explicit `hkps://`/`hkp://` URL to pin one protocol with
+no fallback.
+
 `gpg-push-github` reports duplicates if the key is already registered;
-`gpg-push-gitlab` does the same.
+`gpg-push-gitlab` does the same. Keyservers have no such concept — sending
+an already-published key just re-merges it, harmlessly.
+
+keys.openpgp.org additionally requires each UID's email address to be
+verified via a confirmation link before that UID becomes publicly
+searchable — `gpg-push-keyserver` prints a reminder when it detects that
+target.
 
 ## Agent management
 
@@ -435,6 +461,7 @@ gpg-card-status      # show YubiKey / smartcard status
 | `gpg-trust [fp] [level]`                                                      | Set owner trust (default: `ultimate`)                         |
 | `gpg-push-github [key-id]`                                                    | Push a public signing key to the authenticated GitHub account |
 | `gpg-push-gitlab [key-id]`                                                    | Push a public signing key to the authenticated GitLab account |
+| `gpg-push-keyserver [key-id] [keyserver]`                                     | Publish a public signing key to a keyserver                   |
 
 All functions with optional arguments support interactive prompts when
 arguments are omitted.
