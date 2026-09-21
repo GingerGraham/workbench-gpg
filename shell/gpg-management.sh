@@ -2124,11 +2124,17 @@ gpg-push-keyserver() {
     local resolved_url="" gpg_output="" gpg_exit=1
     local candidate
     for candidate in "${candidates[@]}"; do
-        case "${candidate}" in
-            hkp://*)
-                log_warn "Falling back to unencrypted hkp:// (hkps attempt failed): ${candidate}"
-                ;;
-        esac
+        # Only warn when this candidate is the hkp fallback of a bare-host
+        # [hkps, hkp] pair (#candidates > 1) -- an explicitly requested
+        # hkp:// URL is always the sole candidate, so no fallback occurred
+        # and no warning is warranted for it.
+        if [[ "${#candidates[@]}" -gt 1 ]]; then
+            case "${candidate}" in
+                hkp://*)
+                    log_warn "Falling back to unencrypted hkp:// (hkps attempt failed): ${candidate}"
+                    ;;
+            esac
+        fi
         log_info "Sending key ${selected_keyid} to ${candidate}..."
         gpg_output="$(gpg --keyserver "${candidate}" --send-keys "${selected_keyid}" 2>&1)"
         gpg_exit=$?
