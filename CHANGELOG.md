@@ -4,6 +4,8 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-23
+
 ### Added
 
 - **Manual `workflow_dispatch` release override.** `release.yml` now
