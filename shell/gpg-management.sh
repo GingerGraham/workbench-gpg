@@ -1374,7 +1374,7 @@ gpg-export-1password() {
     _op_upsert_note() {
         local item_title="${1}" body_file="${2}" tpl_file rc
         tpl_file="${tmp_dir}/op-item.json"
-        if ! cat "${body_file}" | _gpg_op_fill_template "Secure Note" "${tpl_file}" "${item_title}" notesPlain; then
+        if ! _gpg_op_fill_template "Secure Note" "${tpl_file}" "${item_title}" notesPlain < "${body_file}"; then
             log_error "Failed to build 1Password item for: ${item_title}"
             rm -f "${tpl_file}"
             return 1
