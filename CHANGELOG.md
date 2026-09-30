@@ -4,6 +4,21 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Security
+
+- **Secret material no longer appears in process arguments (review M5).**
+  `gpg-export-bitwarden` now pipes item JSON through `bw encode` into
+  `bw create item` / `bw edit item` on stdin, and the passphrase reaches
+  its JSON builder on stdin. `gpg-export-1password` builds items from
+  `op item template get` and passes them with `--template <file>` instead
+  of `notesPlain[text]=...` / `password=...` arguments.
+- **Private temp location, no stale plaintext (review M6).** Transient
+  key exports go to a 0700 directory under `$XDG_RUNTIME_DIR` (then
+  `/dev/shm`, then `$TMPDIR`), leftovers older than 60 minutes from
+  interrupted runs are swept, secret exports are created 0600 from the
+  start, and `gpg-import-bitwarden` / `gpg-import-1password` pipe the key
+  straight into `gpg --import` with no plaintext file.
+
 ## [0.4.0] - 2026-09-23
 
 ### Added
