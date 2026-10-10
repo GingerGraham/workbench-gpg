@@ -922,8 +922,7 @@ gpg-export() {
     gpg --armor --export "${fp}" > "${pub_file}"
 
     log_info "Exporting secret key to ${sec_file}..."
-    gpg --armor --export-secret-keys "${fp}" > "${sec_file}"
-    chmod 600 "${sec_file}"
+    ( umask 077; gpg --armor --export-secret-keys "${fp}" > "${sec_file}" )
 
     echo
     log_info "Exported:"
@@ -954,9 +953,8 @@ gpg-export-master() {
     local out_file="${output_dir}/gpg-${fp}-master-only.asc"
 
     log_info "Exporting master key only (no subkeys) to ${out_file}..."
-    gpg --armor --export-secret-keys --export-options export-minimal "${fp}" \
-        > "${out_file}"
-    chmod 600 "${out_file}"
+    ( umask 077; gpg --armor --export-secret-keys --export-options export-minimal "${fp}" \
+        > "${out_file}" )
 
     log_info "Master key exported to: ${out_file}"
     echo
@@ -985,14 +983,97 @@ gpg-export-subkeys() {
     local out_file="${output_dir}/gpg-${fp}-subkeys-only.asc"
 
     log_info "Exporting subkeys only (master key material excluded) to ${out_file}..."
-    gpg --armor --export-secret-subkeys "${fp}" > "${out_file}"
-    chmod 600 "${out_file}"
+    ( umask 077; gpg --armor --export-secret-subkeys "${fp}" > "${out_file}" )
 
     log_info "Subkeys exported to: ${out_file}"
     echo
     echo "  This export contains only subkey material."
     echo "  The master [C] key is NOT included — it remains on this machine."
     echo "  Import with: gpg-import ${out_file}"
+}
+
+# _gpg_secret_tmpdir
+# Prints a fresh 0700 directory for transient plaintext secret material.
+# Prefers $XDG_RUNTIME_DIR (per-user tmpfs, removed at logout), then /dev/shm,
+# then mktemp's default ($TMPDIR — per-user on macOS). First sweeps this
+# user's leftovers older than 60 minutes from earlier interrupted runs, since
+# an interactive shell function can't guarantee its own cleanup on Ctrl-C in
+# both bash and zsh (security review M6).
+_gpg_secret_tmpdir() {
+    local base=""
+    if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR}" && -w "${XDG_RUNTIME_DIR}" ]]; then
+        base="${XDG_RUNTIME_DIR}"
+    elif [[ -d /dev/shm && -w /dev/shm ]]; then
+        base="/dev/shm"
+    else
+        base="${TMPDIR:-/tmp}"
+    fi
+    find "${base}" -maxdepth 1 -type d -name 'wb-gpg.*' -user "$(id -u)" -mmin +60 -exec rm -rf {} + 2>/dev/null
+    ( umask 077; mktemp -d "${base%/}/wb-gpg.XXXXXX" )
+}
+
+# _gpg_bw_note_json <name> <body_file>
+# Prints a Bitwarden secure-note item. The body is read from the file, never
+# passed as an argument (security review M5).
+_gpg_bw_note_json() {
+    python3 -c '
+import json, sys
+with open(sys.argv[2]) as f:
+    body = f.read()
+print(json.dumps({
+    "organizationId": None, "folderId": None, "type": 2,
+    "name": sys.argv[1], "notes": body, "favorite": False,
+    "secureNote": {"type": 0}, "fields": []
+}))
+' "$1" "$2"
+}
+
+# _gpg_bw_login_json <name> <username>
+# Prints a Bitwarden Login item. The password is read from stdin.
+_gpg_bw_login_json() {
+    python3 -c '
+import json, sys
+print(json.dumps({
+    "organizationId": None, "folderId": None, "type": 1,
+    "name": sys.argv[1], "notes": None, "favorite": False,
+    "login": {"username": sys.argv[2], "password": sys.stdin.read(), "uris": []},
+    "fields": []
+}))
+' "$1" "$2"
+}
+
+# _gpg_bw_find_item_id <name>
+# Prints the id of the item whose name matches exactly, or nothing.
+_gpg_bw_find_item_id() {
+    bw list items --search "$1" 2>/dev/null | python3 -c '
+import json, sys
+items = json.load(sys.stdin)
+match = [i for i in items if i.get("name") == sys.argv[1]]
+print(match[0]["id"] if match else "")
+' "$1" 2>/dev/null || true
+}
+
+# _gpg_op_fill_template <category> <out_file> <title> [<field-id> ...]
+# Writes an op item template to <out_file> with the title set. Values for the
+# listed field ids arrive on stdin, one per field, separated by NUL bytes, so
+# no value is ever an argument.
+_gpg_op_fill_template() {
+    local category="$1" out_file="$2" title="$3"
+    shift 3
+    local template
+    template="$(op item template get "${category}" 2>/dev/null)" || return 1
+    ( umask 077; python3 -c '
+import json, sys
+tpl = json.loads(sys.argv[1])
+out_path, title, ids = sys.argv[2], sys.argv[3], sys.argv[4:]
+values = sys.stdin.read().split("\0")
+tpl["title"] = title
+for field in tpl.get("fields", []):
+    if field.get("id") in ids:
+        field["value"] = values[ids.index(field["id"])]
+with open(out_path, "w") as out:
+    json.dump(tpl, out)
+' "${template}" "${out_file}" "${title}" "$@" )
 }
 
 # gpg-export-bitwarden
@@ -1085,8 +1166,7 @@ gpg-export-bitwarden() {
     echo
 
     local tmp_dir
-    tmp_dir="$(mktemp -d /tmp/gpg-bw-XXXXXX)"
-    chmod 700 "${tmp_dir}"
+    tmp_dir="$(_gpg_secret_tmpdir)" || { log_error "Could not create a private temp directory"; return 1; }
 
     local pub_file="${tmp_dir}/public.asc"
     local sec_file="${tmp_dir}/secret.asc"
@@ -1095,12 +1175,11 @@ gpg-export-bitwarden() {
     local rev_file="${rev_dir}/${fp}-revocation.asc"
 
     gpg --armor --export "${fp}" > "${pub_file}"
-    gpg --armor --export-secret-keys "${fp}" > "${sec_file}"
-    chmod 600 "${sec_file}"
+    # Created 0600 from the start — no window at the default umask.
+    ( umask 077; gpg --armor --export-secret-keys "${fp}" > "${sec_file}" )
 
     if [[ "${master_only}" != "--master-only" ]]; then
-        gpg --armor --export-secret-subkeys "${fp}" > "${sub_file}"
-        chmod 600 "${sub_file}"
+        ( umask 077; gpg --armor --export-secret-subkeys "${fp}" > "${sub_file}" )
     fi
 
     # Ensure revocation cert exists
@@ -1113,122 +1192,31 @@ gpg-export-bitwarden() {
     fi
 
     # _bw_upsert_note <note_name> <body_file>
-    # Creates or updates a Bitwarden secure note. Body is read from a file to
-    # avoid argv size limits and shell escaping issues with armoured key material.
+    # Item JSON is piped through `bw encode` into bw on stdin — no secret
+    # material in argv (security review M5).
     _bw_upsert_note() {
-        local note_name="${1}" note_body_file="${2}"
-
-        local existing_id
-        existing_id="$(bw list items --search "${note_name}" 2>/dev/null \
-            | python3 -c "
-import json, sys
-items = json.load(sys.stdin)
-match = [i for i in items if i.get('name') == sys.argv[1]]
-print(match[0]['id'] if match else '')
-" "${note_name}" 2>/dev/null || true)"
-
-        # shellcheck disable=SC2155
-        local note_json_file="${tmp_dir}/item_$(date +%s%N).json"
-        python3 - "${note_name}" "${note_body_file}" "${note_json_file}" <<'PYEOF'
-import json, sys
-
-note_name  = sys.argv[1]
-body_path  = sys.argv[2]
-out_path   = sys.argv[3]
-
-with open(body_path, 'r') as f:
-    body = f.read()
-
-item = {
-    "organizationId": None,
-    "folderId":       None,
-    "type":           2,
-    "name":           note_name,
-    "notes":          body,
-    "favorite":       False,
-    "secureNote":     {"type": 0},
-    "fields":         []
-}
-
-with open(out_path, 'w') as f:
-    json.dump(item, f)
-PYEOF
-
-        if [[ ! -f "${note_json_file}" ]]; then
-            log_error "Failed to build Bitwarden item JSON for: ${note_name}"
-            return 1
-        fi
-
-        local encoded
-        encoded="$(bw encode < "${note_json_file}")"
-
+        local note_name="${1}" note_body_file="${2}" existing_id
+        existing_id="$(_gpg_bw_find_item_id "${note_name}")"
         if [[ -n "${existing_id}" ]]; then
             log_info "Updating existing Bitwarden note: ${note_name}"
-            bw edit item "${existing_id}" "${encoded}" >/dev/null
+            _gpg_bw_note_json "${note_name}" "${note_body_file}" | bw encode | bw edit item "${existing_id}" >/dev/null
         else
             log_info "Creating Bitwarden note: ${note_name}"
-            bw create item "${encoded}" >/dev/null
+            _gpg_bw_note_json "${note_name}" "${note_body_file}" | bw encode | bw create item >/dev/null
         fi
     }
 
     # _bw_upsert_login <item_name> <username> <password>
-    # Creates or updates a Bitwarden Login item. Password field is masked in
-    # the vault UI and eligible for breach monitoring.
+    # The password reaches python on stdin via printf (a builtin), never argv.
     _bw_upsert_login() {
-        local item_name="${1}" username="${2}" password="${3}"
-
-        local existing_id
-        existing_id="$(bw list items --search "${item_name}" 2>/dev/null \
-            | python3 -c "
-import json, sys
-items = json.load(sys.stdin)
-match = [i for i in items if i.get('name') == sys.argv[1]]
-print(match[0]['id'] if match else '')
-" "${item_name}" 2>/dev/null || true)"
-
-        # shellcheck disable=SC2155
-        local login_json_file="${tmp_dir}/login_$(date +%s%N).json"
-        python3 - "${item_name}" "${username}" "${password}" "${login_json_file}" <<'PYEOF'
-import json, sys
-
-item_name  = sys.argv[1]
-username   = sys.argv[2]
-password   = sys.argv[3]
-out_path   = sys.argv[4]
-
-item = {
-    "organizationId": None,
-    "folderId":       None,
-    "type":           1,
-    "name":           item_name,
-    "notes":          None,
-    "favorite":       False,
-    "login": {
-        "username": username,
-        "password": password,
-        "uris":     []
-    },
-    "fields": []
-}
-
-with open(out_path, 'w') as f:
-    json.dump(item, f)
-PYEOF
-
-        if [[ ! -f "${login_json_file}" ]]; then
-            log_error "Failed to build Bitwarden Login item JSON for: ${item_name}"
-            return 1
-        fi
-
-        local encoded
-        encoded="$(bw encode < "${login_json_file}")"
-
+        local item_name="${1}" username="${2}" password="${3}" existing_id
+        existing_id="$(_gpg_bw_find_item_id "${item_name}")"
         if [[ -n "${existing_id}" ]]; then
             log_info "Updating existing Bitwarden Login item: ${item_name}"
-            bw edit item "${existing_id}" "${encoded}" >/dev/null
+            printf '%s' "${password}" | _gpg_bw_login_json "${item_name}" "${username}" | bw encode | bw edit item "${existing_id}" >/dev/null
         else
             log_info "Creating Bitwarden Login item: ${item_name}"
-            bw create item "${encoded}" >/dev/null
+            printf '%s' "${password}" | _gpg_bw_login_json "${item_name}" "${username}" | bw encode | bw create item >/dev/null
         fi
     }
 
@@ -1355,8 +1343,7 @@ gpg-export-1password() {
     echo
 
     local tmp_dir
-    tmp_dir="$(mktemp -d /tmp/gpg-op-XXXXXX)"
-    chmod 700 "${tmp_dir}"
+    tmp_dir="$(_gpg_secret_tmpdir)" || { log_error "Could not create a private temp directory"; return 1; }
 
     local pub_file="${tmp_dir}/public.asc"
     local sec_file="${tmp_dir}/secret.asc"
@@ -1365,12 +1352,11 @@ gpg-export-1password() {
     local rev_file="${rev_dir}/${fp}-revocation.asc"
 
     gpg --armor --export "${fp}" > "${pub_file}"
-    gpg --armor --export-secret-keys "${fp}" > "${sec_file}"
-    chmod 600 "${sec_file}"
+    # Created 0600 from the start — no window at the default umask.
+    ( umask 077; gpg --armor --export-secret-keys "${fp}" > "${sec_file}" )
 
     if [[ "${master_only}" != "--master-only" ]]; then
-        gpg --armor --export-secret-subkeys "${fp}" > "${sub_file}"
-        chmod 600 "${sub_file}"
+        ( umask 077; gpg --armor --export-secret-subkeys "${fp}" > "${sub_file}" )
     fi
 
     if [[ ! -f "${rev_file}" ]]; then
@@ -1382,43 +1368,49 @@ gpg-export-1password() {
     fi
 
     # _op_upsert_note <title> <body_file>
-    # Creates or updates a 1Password Secure Note. Reads body from file to
-    # avoid argv size/escaping issues with armoured key material.
+    # Item built from `op item template get` and passed via --template, a
+    # 0600 file in the private tmp_dir — never "notesPlain[text]=<secret>" in
+    # argv (security review M5).
     _op_upsert_note() {
-        local item_title="${1}" body_file="${2}"
-        local body
-        body="$(cat "${body_file}")"
-
-        if op item get "${item_title}" "${vault_arg[@]}" &>/dev/null 2>&1; then
+        local item_title="${1}" body_file="${2}" tpl_file rc
+        tpl_file="${tmp_dir}/op-item.json"
+        if ! _gpg_op_fill_template "Secure Note" "${tpl_file}" "${item_title}" notesPlain < "${body_file}"; then
+            log_error "Failed to build 1Password item for: ${item_title}"
+            rm -f "${tpl_file}"
+            return 1
+        fi
+        if op item get "${item_title}" "${vault_arg[@]}" &>/dev/null; then
             log_info "Updating existing 1Password note: ${item_title}"
-            op item edit "${item_title}" "${vault_arg[@]}" \
-                "notesPlain[text]=${body}" >/dev/null
+            op item edit "${item_title}" "${vault_arg[@]}" --template "${tpl_file}" >/dev/null
         else
             log_info "Creating 1Password note: ${item_title}"
-            op item create "${vault_arg[@]}" \
-                --category "Secure Note" \
-                --title "${item_title}" \
-                "notesPlain[text]=${body}" >/dev/null
+            op item create "${vault_arg[@]}" --template "${tpl_file}" >/dev/null
         fi
+        rc=$?
+        rm -f "${tpl_file}"
+        return ${rc}
     }
 
     # _op_upsert_login <title> <username> <password>
-    # Creates or updates a 1Password Login item for the passphrase.
     _op_upsert_login() {
-        local item_title="${1}" username="${2}" password="${3}"
-
-        if op item get "${item_title}" "${vault_arg[@]}" &>/dev/null 2>&1; then
+        local item_title="${1}" username="${2}" password="${3}" tpl_file rc
+        tpl_file="${tmp_dir}/op-login.json"
+        if ! printf '%s\0%s' "${username}" "${password}" \
+                | _gpg_op_fill_template "Login" "${tpl_file}" "${item_title}" username password; then
+            log_error "Failed to build 1Password Login item for: ${item_title}"
+            rm -f "${tpl_file}"
+            return 1
+        fi
+        if op item get "${item_title}" "${vault_arg[@]}" &>/dev/null; then
             log_info "Updating existing 1Password Login item: ${item_title}"
-            op item edit "${item_title}" "${vault_arg[@]}" \
-                "password=${password}" >/dev/null
+            op item edit "${item_title}" "${vault_arg[@]}" --template "${tpl_file}" >/dev/null
         else
             log_info "Creating 1Password Login item: ${item_title}"
-            op item create "${vault_arg[@]}" \
-                --category Login \
-                --title "${item_title}" \
-                "username=${username}" \
-                "password=${password}" >/dev/null
+            op item create "${vault_arg[@]}" --template "${tpl_file}" >/dev/null
         fi
+        rc=$?
+        rm -f "${tpl_file}"
+        return ${rc}
     }
 
     _op_upsert_note "GPG Public Key — ${note_label}"    "${pub_file}"
@@ -1528,16 +1520,12 @@ if match:
         return 1
     fi
 
-    local tmp_file
-    tmp_file="$(mktemp /tmp/gpg-import-XXXXXX.asc)"
-    chmod 600 "${tmp_file}"
-    echo "${note_content}" > "${tmp_file}"
-
-    _gpg_passphrase_ready_check "enter" || { rm -f "${tmp_file}"; return 1; }
+    _gpg_passphrase_ready_check "enter" || return 1
     log_info "Importing key..."
-    gpg --import "${tmp_file}"
+    # Straight from memory to gpg on stdin — no plaintext file (security
+    # review M6). The passphrase prompt comes from pinentry, not stdin.
+    printf '%s\n' "${note_content}" | gpg --import
     local rc=$?
-    rm -f "${tmp_file}"
 
     # shellcheck disable=SC2015
     [[ ${rc} -eq 0 ]] && log_info "Import complete" || log_error "Import failed"
@@ -1598,16 +1586,12 @@ for i, item in enumerate(gpg_items):
         return 1
     fi
 
-    local tmp_file
-    tmp_file="$(mktemp /tmp/gpg-import-XXXXXX.asc)"
-    chmod 600 "${tmp_file}"
-    printf '%s' "${note_content}" > "${tmp_file}"
-
-    _gpg_passphrase_ready_check "enter" || { rm -f "${tmp_file}"; return 1; }
+    _gpg_passphrase_ready_check "enter" || return 1
     log_info "Importing key..."
-    gpg --import "${tmp_file}"
+    # Straight from memory to gpg on stdin — no plaintext file (security
+    # review M6). The passphrase prompt comes from pinentry, not stdin.
+    printf '%s\n' "${note_content}" | gpg --import
     local rc=$?
-    rm -f "${tmp_file}"
 
     # shellcheck disable=SC2015
     [[ ${rc} -eq 0 ]] && log_info "Import complete" || log_error "Import failed"
