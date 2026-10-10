@@ -4,6 +4,8 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-10
+
 ### Security
 
 - **No predictable `/tmp` paths for key material.** `gpg-create-key`,
