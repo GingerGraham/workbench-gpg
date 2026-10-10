@@ -4,6 +4,8 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-10
+
 ### Security
 
 - **Secret material no longer appears in process arguments (review M5).**
