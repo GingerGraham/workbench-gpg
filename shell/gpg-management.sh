@@ -276,8 +276,8 @@ gpg-create-key() {
     _gpg_passphrase_ready_check "new" || return 1
 
     local param_file
-    param_file="$(mktemp /tmp/gpg-keygen-XXXXXX)"
-    chmod 600 "${param_file}"
+    param_file="$(_gpg_tmp_new gpg-keygen)" || return 1
+    _gpg_tmp_guard "${param_file}"
 
     cat > "${param_file}" <<EOF
 %echo Generating master key (Certify only)
@@ -322,12 +322,12 @@ EOF
             if [[ "$(_str_lower "${install_now}")" != "y" ]]; then
                 log_error "Install it manually, then re-run: gpg-create-key"
                 log_error "  install-pinentry"
-                rm -f "${param_file}"
+                _gpg_tmp_release "${param_file}"
                 return 1
             fi
             install-pinentry || {
                 log_error "pinentry install failed — install manually and re-run: gpg-create-key"
-                rm -f "${param_file}"
+                _gpg_tmp_release "${param_file}"
                 return 1
             }
             gpg-agent-restart
@@ -336,11 +336,11 @@ EOF
         fi
 
         log_error "Master key generation failed (exit ${gen_rc})"
-        rm -f "${param_file}"
+        _gpg_tmp_release "${param_file}"
         return 1
     done
 
-    rm -f "${param_file}"
+    _gpg_tmp_release "${param_file}"
 
     # Identify the new key as the fingerprint present after generation but
     # not before.
@@ -869,7 +869,8 @@ gpg-revoke() {
     local rev_file="${rev_dir}/${fp}-revocation.asc"
 
     log_info "Generating revocation certificate for ${fp}..."
-    gpg --output "${rev_file}" --gen-revoke "${fp}"
+    # Created 0600 from the start (umask 077) -- no window at the default umask.
+    ( umask 077; gpg --output "${rev_file}" --gen-revoke "${fp}" )
     local gen_rc=$?
 
     if [[ ${gen_rc} -ne 0 ]]; then
@@ -877,7 +878,7 @@ gpg-revoke() {
         return 1
     fi
 
-    chmod 600 "${rev_file}"
+    chmod 600 "${rev_file}"  # belt-and-braces for a pre-existing file
     log_info "Revocation certificate saved: ${rev_file}"
 
     if [[ "${apply}" == "--apply" ]]; then
@@ -990,6 +991,35 @@ gpg-export-subkeys() {
     echo "  This export contains only subkey material."
     echo "  The master [C] key is NOT included — it remains on this machine."
     echo "  Import with: gpg-import ${out_file}"
+}
+
+# _gpg_tmp_new <name>
+# Prints the path of a fresh private (mode 0600, created under umask 077)
+# temp file via mktemp -- never a predictable /tmp name. XXXXXX stays last
+# so it is portable to BSD/macOS mktemp.
+_gpg_tmp_new() {
+    ( umask 077; mktemp "${TMPDIR:-/tmp}/${1:-gpg}.XXXXXX" )
+}
+
+# _gpg_tmp_guard <file>
+# Arrange for <file> to be removed on EXIT/INT/TERM, saving any traps the
+# caller already had (this file is sourced into interactive shells, so it
+# must not clobber them). Pair with _gpg_tmp_release on every return path.
+_gpg_tmp_guard() {
+    _GPG_SAVED_TRAPS="$(trap -p EXIT INT TERM)"
+    # shellcheck disable=SC2064  # expand the path now, deliberately
+    trap "rm -f '$1'" EXIT INT TERM
+}
+
+# _gpg_tmp_release <file>
+# Remove <file> and restore the traps saved by _gpg_tmp_guard.
+_gpg_tmp_release() {
+    rm -f "$1"
+    trap - EXIT INT TERM
+    if [[ -n "${_GPG_SAVED_TRAPS:-}" ]]; then
+        eval "${_GPG_SAVED_TRAPS}"
+    fi
+    _GPG_SAVED_TRAPS=""
 }
 
 # _gpg_secret_tmpdir
@@ -1187,7 +1217,7 @@ gpg-export-bitwarden() {
         log_warn "No revocation certificate found — generating one now..."
         mkdir -p "${rev_dir}"
         chmod 700 "${rev_dir}"
-        gpg --output "${rev_file}" --gen-revoke "${fp}" || true
+        ( umask 077; gpg --output "${rev_file}" --gen-revoke "${fp}" ) || true
         chmod 600 "${rev_file}" 2>/dev/null || true
     fi
 
@@ -1363,7 +1393,7 @@ gpg-export-1password() {
         log_warn "No revocation certificate found — generating one now..."
         mkdir -p "${rev_dir}"
         chmod 700 "${rev_dir}"
-        gpg --output "${rev_file}" --gen-revoke "${fp}" || true
+        ( umask 077; gpg --output "${rev_file}" --gen-revoke "${fp}" ) || true
         chmod 600 "${rev_file}" 2>/dev/null || true
     fi
 
@@ -1379,12 +1409,12 @@ gpg-export-1password() {
             rm -f "${tpl_file}"
             return 1
         fi
-        if op item get "${item_title}" "${vault_arg[@]}" &>/dev/null; then
+        if op item get "${item_title}" ${vault_arg[@]+"${vault_arg[@]}"} &>/dev/null; then
             log_info "Updating existing 1Password note: ${item_title}"
-            op item edit "${item_title}" "${vault_arg[@]}" --template "${tpl_file}" >/dev/null
+            op item edit "${item_title}" ${vault_arg[@]+"${vault_arg[@]}"} --template "${tpl_file}" >/dev/null
         else
             log_info "Creating 1Password note: ${item_title}"
-            op item create "${vault_arg[@]}" --template "${tpl_file}" >/dev/null
+            op item create ${vault_arg[@]+"${vault_arg[@]}"} --template "${tpl_file}" >/dev/null
         fi
         rc=$?
         rm -f "${tpl_file}"
@@ -1401,12 +1431,12 @@ gpg-export-1password() {
             rm -f "${tpl_file}"
             return 1
         fi
-        if op item get "${item_title}" "${vault_arg[@]}" &>/dev/null; then
+        if op item get "${item_title}" ${vault_arg[@]+"${vault_arg[@]}"} &>/dev/null; then
             log_info "Updating existing 1Password Login item: ${item_title}"
-            op item edit "${item_title}" "${vault_arg[@]}" --template "${tpl_file}" >/dev/null
+            op item edit "${item_title}" ${vault_arg[@]+"${vault_arg[@]}"} --template "${tpl_file}" >/dev/null
         else
             log_info "Creating 1Password Login item: ${item_title}"
-            op item create "${vault_arg[@]}" --template "${tpl_file}" >/dev/null
+            op item create ${vault_arg[@]+"${vault_arg[@]}"} --template "${tpl_file}" >/dev/null
         fi
         rc=$?
         rm -f "${tpl_file}"
@@ -1559,7 +1589,7 @@ gpg-import-1password() {
     if [[ -z "${note_name}" ]]; then
         echo
         log_info "Searching 1Password for GPG key notes..."
-        op item list "${vault_arg[@]}" --categories "Secure Note" --format json 2>/dev/null \
+        op item list ${vault_arg[@]+"${vault_arg[@]}"} --categories "Secure Note" --format json 2>/dev/null \
             | python3 -c "
 import json, sys
 items = json.load(sys.stdin)
@@ -1567,7 +1597,7 @@ gpg_items = [i for i in items if 'GPG' in i.get('title', '')]
 for i, item in enumerate(gpg_items):
     print(f'  {i+1}. {item[\"title\"]}')
 " 2>/dev/null || \
-            op item list "${vault_arg[@]}" --categories "Secure Note" 2>/dev/null \
+            op item list ${vault_arg[@]+"${vault_arg[@]}"} --categories "Secure Note" 2>/dev/null \
                 | grep -i "GPG" || true
         echo
         _read_prompt "  Note title (or partial match): " note_name
@@ -1577,7 +1607,7 @@ for i, item in enumerate(gpg_items):
 
     log_info "Fetching note: ${note_name}"
     local note_content
-    note_content="$(op item get "${note_name}" "${vault_arg[@]}" \
+    note_content="$(op item get "${note_name}" ${vault_arg[@]+"${vault_arg[@]}"} \
         --fields notesPlain 2>/dev/null)"
 
     if [[ -z "${note_content}" ]]; then
@@ -1751,13 +1781,13 @@ gpg-push-github() {
 
     # ── Export public key to temp file ────────────────────────────────────────
     local tmp_file
-    tmp_file="$(mktemp /tmp/gpg-github-XXXXXX.asc)"
-    chmod 600 "${tmp_file}"
+    tmp_file="$(_gpg_tmp_new gpg-github)" || return 1
+    _gpg_tmp_guard "${tmp_file}"
 
     if ! gpg --armor --export "${selected_keyid}" > "${tmp_file}" 2>/dev/null \
             || [[ ! -s "${tmp_file}" ]]; then
         log_error "Failed to export public key for ${selected_keyid}"
-        rm -f "${tmp_file}"
+        _gpg_tmp_release "${tmp_file}"
         return 1
     fi
 
@@ -1767,7 +1797,7 @@ gpg-push-github() {
     gh_output="$(gh gpg-key add "${tmp_file}" --title "${key_title}" 2>&1)"
     gh_exit=$?
 
-    rm -f "${tmp_file}"
+    _gpg_tmp_release "${tmp_file}"
 
     if [[ ${gh_exit} -eq 0 ]]; then
         log_info "GPG key uploaded successfully"
@@ -1873,13 +1903,13 @@ gpg-push-gitlab() {
 
     # ── Export public key to temp file ────────────────────────────────────────
     local tmp_file
-    tmp_file="$(mktemp /tmp/gpg-gitlab-XXXXXX.asc)"
-    chmod 600 "${tmp_file}"
+    tmp_file="$(_gpg_tmp_new gpg-gitlab)" || return 1
+    _gpg_tmp_guard "${tmp_file}"
 
     if ! gpg --armor --export "${selected_keyid}" > "${tmp_file}" 2>/dev/null \
             || [[ ! -s "${tmp_file}" ]]; then
         log_error "Failed to export public key for ${selected_keyid}"
-        rm -f "${tmp_file}"
+        _gpg_tmp_release "${tmp_file}"
         return 1
     fi
 
@@ -1894,7 +1924,7 @@ gpg-push-gitlab() {
         log_warn "Check: https://gitlab.com/-/profile/gpg_keys"
     fi
 
-    rm -f "${tmp_file}"
+    _gpg_tmp_release "${tmp_file}"
 }
 
 # ── Keyserver integration ─────────────────────────────────────────────────────

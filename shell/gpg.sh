@@ -126,7 +126,7 @@ gpg-list-signing-keys() {
                 # Apply email filter against collected UIDs
                 local matched_uids=()
                 local u
-                for u in "${uids[@]}"; do
+                for u in ${uids[@]+"${uids[@]}"}; do
                     if [[ -z "${filter}" ]] || echo "${u}" | grep -qi "${filter}"; then
                         matched_uids+=("${u}")
                     fi
