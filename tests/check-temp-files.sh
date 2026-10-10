@@ -67,21 +67,44 @@ else
 fi
 rm -f "${f}"
 
-# Guard removes the file on EXIT and on TERM
-for sig in EXIT TERM; do
-    marker="${work}/guard-${sig}"
-    : > "${marker}"
-    if [[ "${sig}" == "EXIT" ]]; then
-        ( _gpg_tmp_guard "${marker}"; exit 0 )
-    else
-        ( _gpg_tmp_guard "${marker}"; kill -TERM $BASHPID; sleep 1 ) 2>/dev/null
-    fi
-    if [[ ! -e "${marker}" ]]; then
-        ok "guard removes the temp file on ${sig}"
-    else
-        fail "temp file survived ${sig}"
-    fi
-done
+# Guard removes the file on EXIT
+marker="${work}/guard-EXIT"
+: > "${marker}"
+( _gpg_tmp_guard "${marker}"; exit 0 )
+if [[ ! -e "${marker}" ]]; then
+    ok "guard removes the temp file on EXIT"
+else
+    fail "temp file survived EXIT"
+fi
+
+# Guard installs a TERM trap (checked directly, so a missing TERM trap fails
+# even if the EXIT trap would also fire on signal death) and removes the file
+# when a live subshell is sent SIGTERM. Bash 3.2-safe: background + $! only.
+marker="${work}/guard-TERM"
+: > "${marker}"
+( _gpg_tmp_guard "${marker}"
+  trap -p TERM > "${work}/term-trap"
+  : > "${work}/term-ready"
+  while :; do sleep 1; done ) 2>/dev/null &
+pid=$!
+n=0
+while [[ ! -e "${work}/term-ready" && ${n} -lt 50 ]]; do sleep 0.1; n=$((n + 1)); done
+if [[ -e "${work}/term-ready" && "$(cat "${work}/term-trap")" == *"${marker}"* ]]; then
+    ok "guard installs a TERM trap that removes the temp file"
+else
+    fail "guard did not install a TERM trap for the temp file"
+fi
+kill -TERM "${pid}" 2>/dev/null
+# The trap only removes the file (it does not exit), so poll, then reap.
+n=0
+while [[ -e "${marker}" && ${n} -lt 50 ]]; do sleep 0.1; n=$((n + 1)); done
+if [[ ! -e "${marker}" ]]; then
+    ok "guard removes the temp file when sent SIGTERM"
+else
+    fail "temp file survived SIGTERM"
+fi
+kill -KILL "${pid}" 2>/dev/null
+wait "${pid}" 2>/dev/null
 
 # Release removes the file and restores the caller's traps
 marker="${work}/release"
