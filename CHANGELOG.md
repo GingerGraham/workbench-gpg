@@ -4,6 +4,13 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Documentation
+
+- Documented temp-file cleanup and Ctrl-C behaviour (README "Temp files
+  and Ctrl-C" and a comment at `_gpg_tmp_guard`): the temp file is removed
+  on EXIT/INT/TERM, but in an interactive shell the function keeps running
+  after Ctrl-C.
+
 ## [0.4.2] - 2026-10-10
 
 ### Security
