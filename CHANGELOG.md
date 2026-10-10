@@ -4,6 +4,25 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Security
+
+- **No predictable `/tmp` paths for key material.** `gpg-create-key`,
+  `gpg-push-github` and `gpg-push-gitlab` now use a private `mktemp` file
+  (mode 0600, created under umask 077) and remove it via an
+  EXIT/INT/TERM trap, so parameter files and exported keys never linger
+  after an interrupt. Any traps the calling shell already had are
+  restored afterwards.
+- **Revocation certificates are created 0600 from the start.**
+  `gpg-revoke` and the export helpers' fallback certificate generation now
+  run `gpg --gen-revoke` under `umask 077` rather than relying on a
+  `chmod` after the write.
+
+### Fixed
+
+- Empty-array expansions (`vault_arg`, `uids`) now use the
+  `${arr[@]+"${arr[@]}"}` idiom, so they no longer fail under `set -u` on
+  bash < 4.4 (including macOS bash 3.2).
+
 ## [0.4.1] - 2026-10-10
 
 ### Security
