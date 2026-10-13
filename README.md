@@ -366,6 +366,27 @@ gpg-import ~/transfer/gpg-<fp>-subkeys-only.asc
 gpg-trust <fingerprint>
 ```
 
+## Temp files and Ctrl-C
+
+`gpg-create-key`, `gpg-push-github` and `gpg-push-gitlab` write a
+private temp file (`mktemp`, mode 0600, under `$TMPDIR` or `/tmp`):
+the key-generation parameter file, or the exported public key.
+
+- **Cleaned up on:** normal exit of the function, and on `EXIT`, `INT`
+  (Ctrl-C) and `TERM`. Your shell's existing `EXIT`/`INT`/`TERM` traps are
+  saved and restored afterwards.
+- **Ctrl-C in an interactive shell:** the temp file is removed, but the
+  function itself keeps running. Later steps still execute and may fail
+  because the temp file is gone (for example a failed upload or
+  key-generation error). Nothing is left on disk; the function just does
+  not stop.
+- **What to expect:** an error message after Ctrl-C, not a half-written
+  secret. Check the result (`gpg --list-secret-keys`, or your provider's
+  key settings) before retrying.
+- **To abort fully:** run the command in a subshell, e.g.
+  `( gpg-push-github )`, so `INT`/`TERM` ends that subshell; or close the
+  shell (or `kill` it). The temp file is removed in both cases.
+
 ## Publishing your signing key
 
 Once your signing subkey exists, publish its public key so signed commits

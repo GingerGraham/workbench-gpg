@@ -1005,6 +1005,12 @@ _gpg_tmp_new() {
 # Arrange for <file> to be removed on EXIT/INT/TERM, saving any traps the
 # caller already had (this file is sourced into interactive shells, so it
 # must not clobber them). Pair with _gpg_tmp_release on every return path.
+#
+# NOTE: the INT/TERM trap only removes the file; it does not abort the
+# running function. On Ctrl-C in an interactive shell the file is gone but
+# the function keeps going, so later steps may fail on the missing file.
+# To abort fully, run the command in a subshell or close the shell. See
+# README "Temp files and Ctrl-C".
 _gpg_tmp_guard() {
     _GPG_SAVED_TRAPS="$(trap -p EXIT INT TERM)"
     # shellcheck disable=SC2064  # expand the path now, deliberately
