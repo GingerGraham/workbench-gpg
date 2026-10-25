@@ -4,6 +4,16 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`gpg-create-key` can install pinentry when it's missing.** It called
+  `install-pinentry` directly, but installer files are never loaded into
+  your shell, so the offered install failed with `command not found`. It
+  now runs `wb tools install pinentry`. Error messages and the README name
+  `wb tools install <name>` instead of `install-*` functions you can't
+  call directly. Required by workbench-core's module CI clean-shell check
+  (its `docs/decisions-log.md` D94).
+
 ### Documentation
 
 - Documented temp-file cleanup and Ctrl-C behaviour (README "Temp files

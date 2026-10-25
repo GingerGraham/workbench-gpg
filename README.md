@@ -25,10 +25,10 @@ GPG support spans two shell files:
   interactively.)
 
 These functions integrate with two password managers for key backup
-(**Bitwarden** and **1Password**, via `workbench-security`'s
-`install-bw-cli`/`install-op-cli`) and two git providers for publishing your
-signing key (**GitHub** and **GitLab**, via `workbench-git`'s
-`install-gh`/`install-glab`). Use whichever combination matches your setup —
+(**Bitwarden** and **1Password**, via `workbench-security`'s `bw-cli` /
+`op-cli` installers) and two git providers for publishing your signing key
+(**GitHub** and **GitLab**, via `workbench-git`'s `gh` / `glab`
+installers — each run with `wb tools install <name>`). Use whichever combination matches your setup —
 function names follow the pattern `gpg-<action>-<service>`, so an
 equivalent exists for each supported service.
 
@@ -72,7 +72,7 @@ The function families work identically — pick whichever matches your vault.
 ### Bitwarden (`bw`)
 
 ```bash
-install-bw-cli                          # install the headless CLI
+wb tools install bw-cli                 # install the headless CLI
 bw login                                # first-time authentication
 export BW_SESSION=$(bw unlock --raw)    # unlock and capture session token
 ```
@@ -84,9 +84,9 @@ the `export` line after each login.
 ### 1Password (`op`)
 
 ```bash
-install-op-cli                          # 1Password CLI only
+wb tools install op-cli                 # 1Password CLI only
 # or, for biometric unlock support:
-install-1password                       # 1Password desktop app
+wb tools install 1password              # 1Password desktop app
 op signin                                # authenticate (not needed if using
                                           # desktop app biometric integration)
 ```
@@ -405,8 +405,8 @@ require the matching provider CLI (`workbench-git`) to be installed and
 authenticated first:
 
 ```bash
-install-gh    && gh auth login      # for gpg-push-github
-install-glab  && glab auth login    # for gpg-push-gitlab
+wb tools install gh    && gh auth login      # for gpg-push-github
+wb tools install glab  && glab auth login    # for gpg-push-gitlab
 ```
 
 `gpg-push-keyserver` needs nothing beyond `gpg` itself — every keyserver
@@ -495,6 +495,8 @@ arguments are omitted.
 
 `install-bw-cli`/`install-1password`/`install-op-cli` live in
 `workbench-security`; `install-gh`/`install-glab` live in `workbench-git`.
+Installer files are never loaded into your shell — run any of them with
+`wb tools install <name>` (for example `wb tools install pinentry`).
 
 ## Pinentry
 
@@ -510,12 +512,12 @@ gpg: agent_genkey failed: No pinentry
 ```
 
 `gpg-create-key` detects this automatically and offers to run
-`install-pinentry` and retry inline, reusing the identity and expiry
+`wb tools install pinentry` and retry inline, reusing the identity and expiry
 details already entered. To install pinentry manually ahead of time, or if
 you decline the prompt:
 
 ```bash
-install-pinentry
+wb tools install pinentry
 ```
 
 This installs a terminal-capable frontend (curses/tty) via the platform
