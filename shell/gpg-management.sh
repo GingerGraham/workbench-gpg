@@ -134,7 +134,7 @@ _gpg_require_key() {
 _gpg_require_bw() {
     if ! command -v bw &>/dev/null; then
         log_error "Bitwarden CLI (bw) is not installed"
-        log_error "Install it with: install-bw-cli"
+        log_error "Install it with: wb tools install bw-cli   # workbench-security"
         return 1
     fi
 }
@@ -164,7 +164,7 @@ _gpg_bw_logged_in() {
 _gpg_require_op() {
     if ! command -v op &>/dev/null; then
         log_error "1Password CLI (op) is not installed"
-        log_error "Install it with: install-op-cli"
+        log_error "Install it with: wb tools install op-cli   # workbench-security"
         return 1
     fi
 }
@@ -321,11 +321,14 @@ EOF
             install_now="${install_now:-y}"
             if [[ "$(_str_lower "${install_now}")" != "y" ]]; then
                 log_error "Install it manually, then re-run: gpg-create-key"
-                log_error "  install-pinentry"
+                log_error "  wb tools install pinentry"
                 _gpg_tmp_release "${param_file}"
                 return 1
             fi
-            install-pinentry || {
+            # Through 'wb tools': installer files are never sourced into the
+            # interactive shell, so a direct install-pinentry call failed
+            # with "command not found" (workbench-core D94).
+            wb tools install pinentry || {
                 log_error "pinentry install failed — install manually and re-run: gpg-create-key"
                 _gpg_tmp_release "${param_file}"
                 return 1
@@ -1835,7 +1838,7 @@ gpg-push-gitlab() {
 
     _gpg-push-gitlab-available || {
         log_error "GitLab CLI (glab) is not installed"
-        log_error "Install it with: install-glab"
+        log_error "Install it with: wb tools install glab   # workbench-git"
         log_error "Then authenticate: glab auth login"
         return 1
     }

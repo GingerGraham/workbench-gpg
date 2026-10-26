@@ -175,7 +175,7 @@ gpg-list-signing-keys() {
 gpg-github-keys() {
     _gpg-github-keys-available || {
         log_error "GitHub CLI (gh) is not installed"
-        log_error "Install it with: install-gh   # workbench-git"
+        log_error "Install it with: wb tools install gh   # workbench-git"
         return 1
     }
 
@@ -402,7 +402,7 @@ _gpg_resolve_signing_key() {
 gpg-gitlab-keys() {
     _gpg-gitlab-keys-available || {
         log_error "GitLab CLI (glab) is not installed"
-        log_error "Install it with: install-glab   # workbench-git"
+        log_error "Install it with: wb tools install glab   # workbench-git"
         return 1
     }
 
