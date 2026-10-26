@@ -4,6 +4,8 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-26
+
 ### Fixed
 
 - **`gpg-create-key` can install pinentry when it's missing.** It called
