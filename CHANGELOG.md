@@ -4,6 +4,31 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Vault exports no longer report success when an item wasn't stored.**
+  `gpg-export-bitwarden` and `gpg-export-1password` ignored every upload
+  result, so a failed `bw`/`op` call or a missing `python3` still printed
+  "backup complete" and suggested `gpg-remove-master`. They now check
+  each item (the Bitwarden JSON is built before it's piped to `bw`, and a
+  new Bitwarden item is looked up again after it's created), print
+  "backup INCOMPLETE … Do not remove the master key" and return non-zero
+  when any item failed. The `gpg-remove-master` hint prints only after a
+  complete backup. Re-running after fixing the problem updates existing
+  items rather than duplicating them.
+- **`get-gpg-functions` lists the module's functions in zsh.** The
+  hand-written getter read `BASH_SOURCE` inside the function, which zsh
+  doesn't set, so in zsh it printed only headers and `(none)`. It is
+  removed; workbench-core now generates the getter from `workbench.yml`
+  (its `docs/decisions-log.md` D89), in bash and zsh, including on hosts
+  without gpg, where the old one was never defined. The section headers
+  now read `GPG day-to-day and key-lifecycle helpers — functions` and
+  `… — aliases`; `get-gpg-functions` no longer lists itself.
+
+### Changed
+
+- Requires workbench-core Core API 1.8 (`core_api: ">=1.8 <2.0"`).
+
 ## [0.4.3] - 2026-10-26
 
 ### Fixed

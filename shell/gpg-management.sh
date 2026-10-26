@@ -1135,7 +1135,7 @@ with open(out_path, "w") as out:
 #   gpg-export-bitwarden <fingerprint> --master-only
 #   gpg-export-bitwarden <fingerprint> --name "work-laptop" --master-only
 gpg-export-bitwarden() {
-    local fp="${1:-}" custom_qualifier="" master_only=""
+    local fp="${1:-}" custom_qualifier="" master_only="" failed=0
 
     shift || true
     while [[ $# -gt 0 ]]; do
@@ -1231,43 +1231,75 @@ gpg-export-bitwarden() {
     fi
 
     # _bw_upsert_note <note_name> <body_file>
-    # Item JSON is piped through `bw encode` into bw on stdin — no secret
-    # material in argv (security review M5).
+    # Returns non-zero if the item wasn't stored. The JSON is built first, so
+    # a python3 failure is caught on its own; a pipeline's status is only its
+    # last command's. The item JSON goes to bw through printf, a builtin, so
+    # nothing secret reaches argv (security review M5).
     _bw_upsert_note() {
-        local note_name="${1}" note_body_file="${2}" existing_id
+        local note_name="${1}" note_body_file="${2}" existing_id item_json
+        if ! item_json="$(_gpg_bw_note_json "${note_name}" "${note_body_file}")" || [[ -z "${item_json}" ]]; then
+            log_error "Could not build the Bitwarden item for: ${note_name}"
+            return 1
+        fi
         existing_id="$(_gpg_bw_find_item_id "${note_name}")"
         if [[ -n "${existing_id}" ]]; then
             log_info "Updating existing Bitwarden note: ${note_name}"
-            _gpg_bw_note_json "${note_name}" "${note_body_file}" | bw encode | bw edit item "${existing_id}" >/dev/null
+            printf '%s' "${item_json}" | bw encode | bw edit item "${existing_id}" >/dev/null \
+                || { log_error "Bitwarden did not update: ${note_name}"; return 1; }
         else
             log_info "Creating Bitwarden note: ${note_name}"
-            _gpg_bw_note_json "${note_name}" "${note_body_file}" | bw encode | bw create item >/dev/null
+            printf '%s' "${item_json}" | bw encode | bw create item >/dev/null \
+                || { log_error "Bitwarden did not create: ${note_name}"; return 1; }
+            [[ -n "$(_gpg_bw_find_item_id "${note_name}")" ]] \
+                || { log_error "Bitwarden reports no item named: ${note_name}"; return 1; }
         fi
     }
 
     # _bw_upsert_login <item_name> <username> <password>
-    # The password reaches python on stdin via printf (a builtin), never argv.
+    # Same shape as _bw_upsert_note. The password reaches python on stdin via
+    # printf (a builtin), never argv; the JSON holding it is cleared on every
+    # path out.
     _bw_upsert_login() {
-        local item_name="${1}" username="${2}" password="${3}" existing_id
+        local item_name="${1}" username="${2}" password="${3}" existing_id item_json
+        if ! item_json="$(printf '%s' "${password}" | _gpg_bw_login_json "${item_name}" "${username}")" \
+                || [[ -z "${item_json}" ]]; then
+            item_json=""
+            log_error "Could not build the Bitwarden Login item for: ${item_name}"
+            return 1
+        fi
         existing_id="$(_gpg_bw_find_item_id "${item_name}")"
         if [[ -n "${existing_id}" ]]; then
             log_info "Updating existing Bitwarden Login item: ${item_name}"
-            printf '%s' "${password}" | _gpg_bw_login_json "${item_name}" "${username}" | bw encode | bw edit item "${existing_id}" >/dev/null
+            if ! printf '%s' "${item_json}" | bw encode | bw edit item "${existing_id}" >/dev/null; then
+                item_json=""
+                log_error "Bitwarden did not update: ${item_name}"
+                return 1
+            fi
         else
             log_info "Creating Bitwarden Login item: ${item_name}"
-            printf '%s' "${password}" | _gpg_bw_login_json "${item_name}" "${username}" | bw encode | bw create item >/dev/null
+            if ! printf '%s' "${item_json}" | bw encode | bw create item >/dev/null; then
+                item_json=""
+                log_error "Bitwarden did not create: ${item_name}"
+                return 1
+            fi
+            item_json=""
+            if [[ -z "$(_gpg_bw_find_item_id "${item_name}")" ]]; then
+                log_error "Bitwarden reports no item named: ${item_name}"
+                return 1
+            fi
         fi
+        item_json=""
     }
 
-    _bw_upsert_note "GPG Public Key — ${note_label}"    "${pub_file}"
-    _bw_upsert_note "GPG Secret Key — ${note_label}"    "${sec_file}"
+    _bw_upsert_note "GPG Public Key — ${note_label}"    "${pub_file}" || failed=$((failed + 1))
+    _bw_upsert_note "GPG Secret Key — ${note_label}"    "${sec_file}" || failed=$((failed + 1))
 
     if [[ -f "${sub_file}" ]]; then
-        _bw_upsert_note "GPG Subkeys Only — ${note_label}" "${sub_file}"
+        _bw_upsert_note "GPG Subkeys Only — ${note_label}" "${sub_file}" || failed=$((failed + 1))
     fi
 
     if [[ -f "${rev_file}" ]]; then
-        _bw_upsert_note "GPG Revocation Certificate — ${note_label}" "${rev_file}"
+        _bw_upsert_note "GPG Revocation Certificate — ${note_label}" "${rev_file}" || failed=$((failed + 1))
     else
         log_warn "No revocation certificate to store — generate one with: gpg-revoke ${fp}"
     fi
@@ -1276,13 +1308,20 @@ gpg-export-bitwarden() {
         _bw_upsert_login \
             "GPG Key Passphrase — ${note_label}" \
             "${fp}" \
-            "${passphrase}"
+            "${passphrase}" || failed=$((failed + 1))
         # Clear from memory immediately after use
         passphrase=""
         passphrase_confirm=""
     fi
 
     rm -rf "${tmp_dir}"
+
+    if [[ "${failed}" -gt 0 ]]; then
+        echo
+        log_error "Bitwarden backup INCOMPLETE for ${fp}: ${failed} item(s) were not stored — see above."
+        log_error "Do not remove the master key. Fix the problem and run this again; existing items are updated, not duplicated."
+        return 1
+    fi
 
     echo
     log_info "Bitwarden backup complete for ${fp}"
@@ -1317,7 +1356,7 @@ gpg-export-bitwarden() {
 #   gpg-export-1password <fingerprint> --vault "Secrets"
 #   gpg-export-1password <fingerprint> --master-only
 gpg-export-1password() {
-    local fp="${1:-}" custom_qualifier="" master_only="" vault_flag=""
+    local fp="${1:-}" custom_qualifier="" master_only="" vault_flag="" failed=0
 
     shift || true
     while [[ $# -gt 0 ]]; do
@@ -1452,15 +1491,15 @@ gpg-export-1password() {
         return ${rc}
     }
 
-    _op_upsert_note "GPG Public Key — ${note_label}"    "${pub_file}"
-    _op_upsert_note "GPG Secret Key — ${note_label}"    "${sec_file}"
+    _op_upsert_note "GPG Public Key — ${note_label}"    "${pub_file}" || failed=$((failed + 1))
+    _op_upsert_note "GPG Secret Key — ${note_label}"    "${sec_file}" || failed=$((failed + 1))
 
     if [[ -f "${sub_file}" ]]; then
-        _op_upsert_note "GPG Subkeys Only — ${note_label}" "${sub_file}"
+        _op_upsert_note "GPG Subkeys Only — ${note_label}" "${sub_file}" || failed=$((failed + 1))
     fi
 
     if [[ -f "${rev_file}" ]]; then
-        _op_upsert_note "GPG Revocation Certificate — ${note_label}" "${rev_file}"
+        _op_upsert_note "GPG Revocation Certificate — ${note_label}" "${rev_file}" || failed=$((failed + 1))
     else
         log_warn "No revocation certificate to store — generate one with: gpg-revoke ${fp}"
     fi
@@ -1469,12 +1508,19 @@ gpg-export-1password() {
         _op_upsert_login \
             "GPG Key Passphrase — ${note_label}" \
             "${fp}" \
-            "${passphrase}"
+            "${passphrase}" || failed=$((failed + 1))
         passphrase=""
         passphrase_confirm=""
     fi
 
     rm -rf "${tmp_dir}"
+
+    if [[ "${failed}" -gt 0 ]]; then
+        echo
+        log_error "1Password backup INCOMPLETE for ${fp}: ${failed} item(s) were not stored — see above."
+        log_error "Do not remove the master key. Fix the problem and run this again; existing items are updated, not duplicated."
+        return 1
+    fi
 
     echo
     log_info "1Password backup complete for ${fp}"

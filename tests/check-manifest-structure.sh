@@ -45,6 +45,28 @@ for key in version core_api register; do
     fi
 done
 
+# Core API 1.8 (workbench-core v2.21.0, D89) generates get-gpg-functions
+# from register.getters[]; this module relies on that.
+if [[ -n "${MANIFEST}" ]] && grep -qxF 'core_api: ">=1.8 <2.0"' "${MANIFEST}"; then
+    ok "manifest declares core_api: \">=1.8 <2.0\""
+else
+    fail "manifest core_api is not \">=1.8 <2.0\""
+fi
+
+if [[ -n "${MANIFEST}" ]] && grep -qE '^[[:space:]]*function:[[:space:]]*get-gpg-functions[[:space:]]*$' "${MANIFEST}"; then
+    ok "manifest still declares the get-gpg-functions getter"
+else
+    fail "manifest no longer declares the get-gpg-functions getter"
+fi
+
+# A hand-written getter would win over core's, and one that reads
+# BASH_SOURCE inside the function lists nothing in zsh.
+if ! grep -rqE '^[[:space:]]*(function[[:space:]]+)?get-[a-z-]+-functions' "${REPO_ROOT}/shell/"; then
+    ok "shell/ defines no get-*-functions getter (core generates it)"
+else
+    fail "shell/ defines a get-*-functions getter: $(grep -rnE '^[[:space:]]*(function[[:space:]]+)?get-[a-z-]+-functions' "${REPO_ROOT}/shell/" | head -1)"
+fi
+
 _missing=0
 if [[ -n "${MANIFEST}" ]]; then
     while IFS= read -r src; do

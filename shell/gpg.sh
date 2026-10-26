@@ -504,12 +504,6 @@ gpg-card-status() {
     fi
 }
 
-get-gpg-functions() {
-    local _dir; _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    _get_functions_in "GPG functions" "" "${_dir}/gpg.sh" "${_dir}/gpg-management.sh"
-    _get_aliases_in "GPG aliases" "" "${_dir}/gpg.sh" "${_dir}/gpg-management.sh"
-}
-
 # ── GPG_TTY export (required for pinentry-curses on non-X11 terminals) ────────
 # This runs at source time so the variable is always set correctly for this session.
 export GPG_TTY
