@@ -4,7 +4,35 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **`gpg-resolve-signing-key <key-id>`**, a public, stable form of the
+  signing-subkey resolution workbench-git uses for `git-add-project` /
+  `git-update-project`. Prints the `[S]` subkey to use for a master key
+  or fingerprint. README "For other modules" documents it.
+
 ### Fixed
+
+- **Function listings say what each name needs.** `gpg-push-github` and
+  `gpg-push-gitlab` now need gpg as well as `gh`/`glab`; the Bitwarden
+  and 1Password functions name `python3` and `gpg` as well as `bw`/`op`
+  and point at `wb tools install bw-cli`/`op-cli`; `gpg-agent-restart`
+  and `gpg-agent-forget` need `gpgconf`. The `gpg-ls`/`gpg-ls-secret`
+  aliases are hidden without gpg.
+- **Keyserver names match case-insensitively in zsh.** `gpg-push-keyserver`
+  and its alias lookup used bash's `shopt nocasematch`, which zsh doesn't
+  have: in zsh, `OpenPGP` became `hkps://OpenPGP` with `shopt: command
+  not found` errors, and the keys.openpgp.org verification note didn't
+  show. Matching now lowercases the input instead.
+- **`gpg-rotate-subkey` lists only subkeys.** The fingerprint list it
+  shows before asking which subkey to retire included the master key's
+  own fingerprint.
+- **`gpg-push-gitlab` returns non-zero when `glab gpg-key add` fails.**
+- **`gpg-export-bitwarden`/`gpg-export-1password` work without
+  `hostname`.** The default qualifier falls back to `uname -n`.
+- **`installed-pinentry` finds pinentry on macOS and when
+  `~/.local/bin` isn't on `PATH`.** It also accepts `pinentry-mac` and
+  the `~/.local/bin/pinentry` link `wb tools install pinentry` creates.
 
 - **Vault exports no longer report success when an item wasn't stored.**
   `gpg-export-bitwarden` and `gpg-export-1password` ignored every upload

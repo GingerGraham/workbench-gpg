@@ -18,6 +18,7 @@ fail() { check_no=$((check_no + 1)); echo "FAIL: [$check_no] $*"; FAILED=$((FAIL
 # isolation approach check-manifest-structure.sh uses for manifest
 # discovery (no workbench-core checkout required to run this test).
 _wb_declare_availability() { :; }
+_wb_alias_availability() { :; }
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/shell/gpg-management.sh"
 
@@ -83,6 +84,27 @@ for input in "" "ftp://keys.openpgp.org" "https://keys.openpgp.org" "not a host 
         ok "'${input}' is correctly rejected"
     fi
 done
+
+# ── zsh: the same file is sourced into zsh, which has no shopt ──────────────
+#    (case-insensitive matching used to rely on shopt nocasematch)
+
+if command -v zsh &>/dev/null; then
+    # shellcheck disable=SC2016  # expanded by zsh, not here
+    zsh_out="$(REPO_ROOT="${REPO_ROOT}" zsh -c '
+        _wb_declare_availability() { :; }
+        _wb_alias_availability() { :; }
+        source "${REPO_ROOT}/shell/gpg-management.sh" || exit 9
+        _gpg_resolve_keyserver_candidates OpenPGP
+    ' 2>&1)"
+    zsh_rc=$?
+    if [[ ${zsh_rc} -eq 0 && "${zsh_out}" == "hkps://keys.openpgp.org" ]]; then
+        ok "zsh: 'OpenPGP' resolves to hkps://keys.openpgp.org"
+    else
+        fail "zsh: 'OpenPGP' did not resolve to hkps://keys.openpgp.org (rc ${zsh_rc}, got '${zsh_out}')"
+    fi
+else
+    echo "SKIP: zsh not installed — zsh resolution check not run"
+fi
 
 echo
 echo "==============================="

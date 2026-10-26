@@ -17,6 +17,8 @@ fail() { check_no=$((check_no + 1)); echo "FAIL: [$check_no] $*"; FAILED=$((FAIL
 # shellcheck disable=SC2329  # stubs are called by the sourced file
 _wb_declare_availability() { :; }
 # shellcheck disable=SC2329
+_wb_alias_availability() { :; }
+# shellcheck disable=SC2329
 log_info()  { :; }
 # shellcheck disable=SC2329
 log_warn()  { :; }

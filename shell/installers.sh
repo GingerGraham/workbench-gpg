@@ -105,5 +105,5 @@ install-pinentry() {
 }
 
 installed-pinentry() {
-    command -v pinentry &>/dev/null
+    command -v pinentry &>/dev/null || command -v pinentry-mac &>/dev/null || [[ -x "${HOME}/.local/bin/pinentry" ]]
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shell/gpg-management.sh — workbench-gpg
 # GPG key management — generation, subkey operations, export, import, rotation.
-# Registered at tier: lazy (.dotfiles-sync.yml) — the last tier the loader
+# Registered at tier: lazy (workbench.yml) — the last tier the loader
 # sources, but sourced eagerly like every other tier. Ported from
 # workbench-precursor's lazy/gpg-management.sh: that repo's "lazy" was a
 # true stub mechanism deferring the source until first call to any function
@@ -52,8 +52,17 @@
 # predicates are just functions, sourced eagerly regardless of which
 # file declares them.
 
-_wb_declare_availability bw gpg-export-bitwarden gpg-import-bitwarden
-_wb_declare_availability op gpg-export-1password gpg-import-1password
+# The vault functions build their JSON with python3. Install names are
+# workbench-security's (bw-cli, op-cli).
+_gpg_bw_ready()        { command -v bw &>/dev/null && command -v gpg &>/dev/null && command -v python3 &>/dev/null; }
+_gpg_op_export_ready() { command -v op &>/dev/null && command -v gpg &>/dev/null && command -v python3 &>/dev/null; }
+_gpg_op_import_ready() { command -v op &>/dev/null && command -v gpg &>/dev/null; }
+_wb_alias_availability --needs "bw (Bitwarden CLI), gpg and python3" --install bw-cli \
+    _gpg_bw_ready gpg-export-bitwarden gpg-import-bitwarden
+_wb_alias_availability --needs "op (1Password CLI), gpg and python3" --install op-cli \
+    _gpg_op_export_ready gpg-export-1password
+_wb_alias_availability --needs "op (1Password CLI) and gpg" --install op-cli \
+    _gpg_op_import_ready gpg-import-1password
 
 # Every other function in this file needs gpg itself. This file has no
 # load-time guard of its own (unlike gpg.sh) — these functions are always
@@ -197,12 +206,6 @@ _gpg_prompt_key_id() {
     local key_id
     _read_prompt "  ${prompt_label}: " key_id
     echo "${key_id}"
-}
-
-# Convert a key ID/fingerprint to the full 40-char fingerprint.
-_gpg_fingerprint() {
-    gpg --list-keys --with-colons "${1}" 2>/dev/null \
-        | awk -F: '/^fpr/{print $10; exit}'
 }
 
 # ── Key creation ──────────────────────────────────────────────────────────────
@@ -813,8 +816,9 @@ gpg-rotate-subkey() {
     if [[ -z "${subkey_fp}" ]]; then
         echo
         log_info "Subkeys for ${master_fp}:"
+        # The fpr record that follows each ssb record, never the sec's own.
         gpg --list-secret-keys --with-colons "${master_fp}" 2>/dev/null \
-            | awk -F: '/^fpr/ && NR>1 {print "  " $10}'
+            | awk -F: '/^ssb/ { want = 1; next } /^fpr/ && want { print "  " $10; want = 0 } /^sec/ { want = 0 }'
         echo
         _read_prompt "  Subkey fingerprint to retire: " subkey_fp
     fi
@@ -1123,8 +1127,9 @@ with open(out_path, "w") as out:
 # Note naming convention:
 #   <type> — [<qualifier>] <uid> (<fingerprint>)
 #
-# The qualifier defaults to the short hostname (hostname -s) so backups from
-# different machines are distinct and never clobber each other on upsert.
+# The qualifier defaults to the short hostname (hostname -s, or uname -n
+# where hostname is missing) so backups from different machines are
+# distinct and never clobber each other on upsert.
 # Use --name to override the qualifier when the hostname is not meaningful.
 #
 # Requires: bw CLI, BW_SESSION set (run: export BW_SESSION=$(bw unlock --raw))
@@ -1155,7 +1160,7 @@ gpg-export-bitwarden() {
     _gpg_require_key "${fp}" || return 1
 
     # Qualifier: --name wins, otherwise short hostname
-    local qualifier="${custom_qualifier:-$(hostname -s)}"
+    local qualifier="${custom_qualifier:-$(hostname -s 2>/dev/null || uname -n)}"
 
     # UID from key — always included regardless of qualifier
     local uid
@@ -1376,7 +1381,7 @@ gpg-export-1password() {
     fi
     _gpg_require_key "${fp}" || return 1
 
-    local qualifier="${custom_qualifier:-$(hostname -s)}"
+    local qualifier="${custom_qualifier:-$(hostname -s 2>/dev/null || uname -n)}"
     local uid
     uid="$(gpg --list-keys --with-colons "${fp}" 2>/dev/null \
         | awk -F: '/^uid/{print $10; exit}')"
@@ -1970,16 +1975,19 @@ gpg-push-gitlab() {
 
     # glab gpg-key add takes a file path directly (no --title flag)
     log_info "Uploading GPG key to GitLab..."
+    local rc=0
     if glab gpg-key add "${tmp_file}" 2>/dev/null; then
         log_info "GPG key uploaded successfully"
         log_info "View at: https://gitlab.com/-/profile/gpg_keys"
     else
         local glab_exit=$?
+        rc=1
         log_warn "glab gpg-key add exited ${glab_exit} — key may already be registered"
         log_warn "Check: https://gitlab.com/-/profile/gpg_keys"
     fi
 
     _gpg_tmp_release "${tmp_file}"
+    return "${rc:-0}"
 }
 
 # ── Keyserver integration ─────────────────────────────────────────────────────
@@ -2006,13 +2014,13 @@ gpg-push-gitlab() {
 # Self-contained — no Core API calls — so it can be sourced and unit
 # tested in isolation (tests/check-gpg-push-keyserver.sh).
 _gpg_resolve_keyserver_candidates() {
-    local input="${1:-}"
-    local was_nocasematch=0
-    shopt -q nocasematch && was_nocasematch=1
-    shopt -s nocasematch
+    local input="${1:-}" lower
+    # tr, not shopt nocasematch: this file is sourced into zsh too, which has
+    # no shopt. Self-contained, so no _str_lower.
+    lower="$(printf '%s' "${input}" | tr '[:upper:]' '[:lower:]')"
 
     local -a candidates=()
-    case "${input}" in
+    case "${lower}" in
         "")
             ;;
         openpgp)
@@ -2035,8 +2043,6 @@ _gpg_resolve_keyserver_candidates() {
             candidates=("hkps://${input}" "hkp://${input}")
             ;;
     esac
-
-    [[ "${was_nocasematch}" -eq 1 ]] || shopt -u nocasematch
 
     [[ "${#candidates[@]}" -gt 0 ]] || return 1
     printf '%s\n' "${candidates[@]}"
@@ -2218,12 +2224,10 @@ gpg-push-keyserver() {
     if [[ -n "${resolved_url}" ]]; then
         log_info "Key sent successfully to ${resolved_url}"
 
-        local was_nocasematch=0
-        shopt -q nocasematch && was_nocasematch=1
-        shopt -s nocasematch
         local is_openpgp_org=false
-        [[ "${resolved_url}" == *keys.openpgp.org* ]] && is_openpgp_org=true
-        [[ "${was_nocasematch}" -eq 1 ]] || shopt -u nocasematch
+        case "$(printf '%s' "${resolved_url}" | tr '[:upper:]' '[:lower:]')" in
+            *keys.openpgp.org*) is_openpgp_org=true ;;
+        esac
 
         if [[ "${is_openpgp_org}" == "true" ]]; then
             echo
