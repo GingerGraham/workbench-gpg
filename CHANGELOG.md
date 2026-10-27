@@ -4,6 +4,8 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-27
+
 ### Added
 
 - **`gpg-resolve-signing-key <key-id>`**, a public, stable form of the
