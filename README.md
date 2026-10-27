@@ -459,6 +459,7 @@ gpg-card-status      # show YubiKey / smartcard status
 | `gpg-card-status`               | Show smartcard / YubiKey GPG status                  |
 | `gpg-github-keys`               | List GPG keys registered on the authenticated GitHub account |
 | `gpg-gitlab-keys`               | List GPG keys registered on the authenticated GitLab account |
+| `gpg-resolve-signing-key <id>`  | Print the `[S]` signing subkey to use for a key ID (see [For other modules](#for-other-modules)) |
 
 ### `shell/gpg-management.sh`
 
@@ -497,6 +498,23 @@ arguments are omitted.
 `workbench-security`; `install-gh`/`install-glab` live in `workbench-git`.
 Installer files are never loaded into your shell — run any of them with
 `wb tools install <name>` (for example `wb tools install pinentry`).
+
+## For other modules
+
+`gpg-resolve-signing-key <key-id>` is a stable interface for other
+modules. workbench-git calls it, when it's defined, to turn the key ID
+you give `git-add-project`/`git-update-project` into one that can sign:
+
+- a signing (`[S]`) subkey, by key ID or fingerprint, prints unchanged;
+- a master key, or a subkey that can't sign, prints its one `[S]` subkey
+  with a warning, or asks you to pick when it has several;
+- a key with no `[S]` subkey prints an error and returns 1;
+- a key not in the local secret keyring (on a smartcard or another
+  machine, say) prints unchanged with a warning.
+
+Only the key ID goes to stdout, so `key="$(gpg-resolve-signing-key "${id}")"`
+is safe; messages go to stderr. Its name and behaviour won't change
+without a major version.
 
 ## Pinentry
 

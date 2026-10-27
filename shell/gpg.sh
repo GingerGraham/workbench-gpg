@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shell/gpg.sh — workbench-gpg
 # GPG key management — aliases and functions for day-to-day GPG operations.
-# Registered at tier: tools (.dotfiles-sync.yml) — sourced unconditionally by
+# Registered at tier: tools (workbench.yml) — sourced unconditionally by
 # the loader; guards itself on `command -v gpg` below, same as the donor.
 # Heavy operations (key generation, export, rotation) live in
 # shell/gpg-management.sh (tier: lazy).
@@ -21,6 +21,7 @@
 #   gpg-card-status       Show smartcard / YubiKey status (if sc-tool present)
 #   gpg-github-keys       List GPG keys registered on the authenticated GitHub account
 #   gpg-gitlab-keys       List GPG keys registered on the authenticated GitLab account
+#   gpg-resolve-signing-key  Print the [S] signing subkey for a key ID (for workbench-git)
 
 # Function availability predicates — consumed automatically by
 # _get_functions_in/_get_aliases_in (workbench-core) to hide functions
@@ -33,14 +34,22 @@
 # run — and _wb_function_available's documented fallback for "no
 # predicate declared" is available, which would silently defeat this on
 # exactly the host where the gpg-gated set below most needs to fire.
-_wb_declare_availability gh   gpg-github-keys gpg-push-github
-_wb_declare_availability glab gpg-gitlab-keys gpg-push-gitlab
+_wb_declare_availability gh   gpg-github-keys
+_wb_declare_availability glab gpg-gitlab-keys
+# Pushing a key needs gpg as well as the forge CLI.
+_gpg_gh_ready()   { command -v gh   &>/dev/null && command -v gpg &>/dev/null; }
+_gpg_glab_ready() { command -v glab &>/dev/null && command -v gpg &>/dev/null; }
+_wb_alias_availability --needs "gh and gpg"   --install gh   _gpg_gh_ready   gpg-push-github
+_wb_alias_availability --needs "glab and gpg" --install glab _gpg_glab_ready gpg-push-gitlab
 
 # Every other function in gpg.sh needs gpg itself (already the whole
 # file's own load-time guard — this closes the same gap for the
 # *listing*: static extraction can't see that runtime guard either).
 _wb_declare_availability gpg gpg-list gpg-list-secret gpg-list-signing-keys \
-    gpg-show gpg-verify gpg-agent-restart gpg-agent-forget gpg-card-status
+    gpg-show gpg-verify gpg-card-status gpg-ls gpg-ls-secret \
+    gpg-resolve-signing-key
+# The agent helpers use gpgconf, a separate package on some distros.
+_wb_declare_availability gpgconf gpg-agent-restart gpg-agent-forget
 
 command -v gpg &>/dev/null || return 0
 
@@ -396,6 +405,14 @@ _gpg_resolve_signing_key() {
     done
 }
 
+# gpg-resolve-signing-key <key-id>
+# Prints the [S] signing subkey for <key-id> — the public form of
+# _gpg_resolve_signing_key, for other modules (workbench-git) to call when
+# it's defined. Stable interface: keep its name and behaviour.
+gpg-resolve-signing-key() {
+    _gpg_resolve_signing_key "$@"
+}
+
 # gpg-gitlab-keys
 # List GPG keys currently registered on the authenticated GitLab account.
 # Requires: glab CLI, authenticated via 'glab auth login'.
@@ -502,12 +519,6 @@ gpg-card-status() {
         log_error "gpg not found"
         return 1
     fi
-}
-
-get-gpg-functions() {
-    local _dir; _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    _get_functions_in "GPG functions" "" "${_dir}/gpg.sh" "${_dir}/gpg-management.sh"
-    _get_aliases_in "GPG aliases" "" "${_dir}/gpg.sh" "${_dir}/gpg-management.sh"
 }
 
 # ── GPG_TTY export (required for pinentry-curses on non-X11 terminals) ────────

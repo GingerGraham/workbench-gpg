@@ -4,6 +4,59 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **`gpg-resolve-signing-key <key-id>`**, a public, stable form of the
+  signing-subkey resolution workbench-git uses for `git-add-project` /
+  `git-update-project`. Prints the `[S]` subkey to use for a master key
+  or fingerprint. README "For other modules" documents it.
+
+### Fixed
+
+- **Function listings say what each name needs.** `gpg-push-github` and
+  `gpg-push-gitlab` now need gpg as well as `gh`/`glab`; the Bitwarden
+  and 1Password functions name `python3` and `gpg` as well as `bw`/`op`
+  and point at `wb tools install bw-cli`/`op-cli`; `gpg-agent-restart`
+  and `gpg-agent-forget` need `gpgconf`. The `gpg-ls`/`gpg-ls-secret`
+  aliases are hidden without gpg.
+- **Keyserver names match case-insensitively in zsh.** `gpg-push-keyserver`
+  and its alias lookup used bash's `shopt nocasematch`, which zsh doesn't
+  have: in zsh, `OpenPGP` became `hkps://OpenPGP` with `shopt: command
+  not found` errors, and the keys.openpgp.org verification note didn't
+  show. Matching now lowercases the input instead.
+- **`gpg-rotate-subkey` lists only subkeys.** The fingerprint list it
+  shows before asking which subkey to retire included the master key's
+  own fingerprint.
+- **`gpg-push-gitlab` returns non-zero when `glab gpg-key add` fails.**
+- **`gpg-export-bitwarden`/`gpg-export-1password` work without
+  `hostname`.** The default qualifier falls back to `uname -n`.
+- **`installed-pinentry` finds pinentry on macOS and when
+  `~/.local/bin` isn't on `PATH`.** It also accepts `pinentry-mac` and
+  the `~/.local/bin/pinentry` link `wb tools install pinentry` creates.
+
+- **Vault exports no longer report success when an item wasn't stored.**
+  `gpg-export-bitwarden` and `gpg-export-1password` ignored every upload
+  result, so a failed `bw`/`op` call or a missing `python3` still printed
+  "backup complete" and suggested `gpg-remove-master`. They now check
+  each item (the Bitwarden JSON is built before it's piped to `bw`, and a
+  new Bitwarden item is looked up again after it's created), print
+  "backup INCOMPLETE … Do not remove the master key" and return non-zero
+  when any item failed. The `gpg-remove-master` hint prints only after a
+  complete backup. Re-running after fixing the problem updates existing
+  items rather than duplicating them.
+- **`get-gpg-functions` lists the module's functions in zsh.** The
+  hand-written getter read `BASH_SOURCE` inside the function, which zsh
+  doesn't set, so in zsh it printed only headers and `(none)`. It is
+  removed; workbench-core now generates the getter from `workbench.yml`
+  (its `docs/decisions-log.md` D89), in bash and zsh, including on hosts
+  without gpg, where the old one was never defined. The section headers
+  now read `GPG day-to-day and key-lifecycle helpers — functions` and
+  `… — aliases`; `get-gpg-functions` no longer lists itself.
+
+### Changed
+
+- Requires workbench-core Core API 1.8 (`core_api: ">=1.8 <2.0"`).
+
 ## [0.4.3] - 2026-10-26
 
 ### Fixed
