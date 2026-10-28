@@ -20,6 +20,10 @@ All notable changes to `workbench-gpg` are documented here.
 - **`gpg-import`, `gpg-import-bitwarden` and `gpg-import-1password`
   explain a cancelled passphrase prompt.** On `Operation cancelled` they
   show the current `GPG_TTY` and the `updatestartuptty` command.
+- **`gpg-import` returns non-zero when the import fails.** It used to
+  print "Imported. Current secret keys:" and list keys regardless of
+  gpg's exit status. It now reports `Import failed` and returns gpg's
+  status, like the Bitwarden and 1Password variants.
 
 ## [0.5.0] - 2026-10-27
 

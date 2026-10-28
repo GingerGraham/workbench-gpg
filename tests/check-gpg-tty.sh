@@ -140,6 +140,32 @@ else
     fail "hint printed for unrelated output: '${hint}'"
 fi
 
+# ── gpg-import reports failure instead of listing keys ──────────────────────
+
+# shellcheck disable=SC2329  # called by gpg-import
+gpg() {
+    case "${1:-}" in
+        --import) echo "gpg: import from '${2:-[stdin]}' failed: Operation cancelled"; return 2 ;;
+        *)        echo "LISTED-KEYS"; return 0 ;;
+    esac
+}
+log_error() { echo "ERROR: $*"; }
+keyfile="${work}/key.asc"
+: > "${keyfile}"
+import_out="$(gpg-import "${keyfile}" < /dev/null 2>&1)"
+import_rc=$?
+if [[ ${import_rc} -eq 2 ]]; then
+    ok "gpg-import returns gpg's non-zero status when the import fails"
+else
+    fail "gpg-import returned ${import_rc} on a failed import (expected 2)"
+fi
+if [[ "${import_out}" == *"ERROR: Import failed"* && "${import_out}" != *"LISTED-KEYS"* ]]; then
+    ok "gpg-import reports the failure and doesn't list keys as if it succeeded"
+else
+    fail "gpg-import output after a failed import: '${import_out}'"
+fi
+unset -f gpg
+
 # ── Terminal path (needs a pty; skipped where `script` can't provide one) ───
 
 # GNU script takes -c <command>; BSD/macOS script takes <file> <command...>.

@@ -1586,10 +1586,15 @@ gpg-import() {
 
     _gpg_passphrase_ready_check "enter" || return 1
     log_info "Importing key from: ${file}"
-    local gpg_output
+    local gpg_output rc
     gpg_output="$(gpg --import "${file}" 2>&1)"
+    rc=$?
     printf '%s\n' "${gpg_output}"
     _gpg_pinentry_cancel_hint "${gpg_output}"
+    if [[ ${rc} -ne 0 ]]; then
+        log_error "Import failed"
+        return ${rc}
+    fi
 
     echo
     log_info "Imported. Current secret keys:"
