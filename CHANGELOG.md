@@ -4,6 +4,23 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`GPG_TTY` is no longer exported as the literal `not a tty`.** When
+  the loader sourced `gpg.sh` with stdin not attached to a terminal,
+  `tty` printed `not a tty` to stdout, gpg passed that to pinentry as a
+  device path, and imports and signing failed with `Operation
+  cancelled`. `gpg.sh` and `gpg-agent-restart` now set `GPG_TTY` only
+  when stdin is a terminal, and `gpg.sh` clears an inherited
+  `not a tty`. Fixes #34.
+- **The passphrase prompt gate points pinentry at the current terminal.**
+  Before any operation that may prompt, `GPG_TTY` is refreshed and
+  `gpg-connect-agent updatestartuptty` runs, so an agent started from an
+  earlier terminal prompts on the right one.
+- **`gpg-import`, `gpg-import-bitwarden` and `gpg-import-1password`
+  explain a cancelled passphrase prompt.** On `Operation cancelled` they
+  show the current `GPG_TTY` and the `updatestartuptty` command.
+
 ## [0.5.0] - 2026-10-27
 
 ### Added

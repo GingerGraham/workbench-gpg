@@ -89,6 +89,17 @@ _wb_declare_availability gpg gpg-create-key gpg-add-uid gpg-remove-master \
 # Returns 1 if the user chooses to abort.
 _gpg_passphrase_ready_check() {
     local context="${1:-enter}"
+
+    # Point pinentry at the current terminal. Done here, at call time, because
+    # stdin is the user's terminal now; at source time it may not have been
+    # (see the GPG_TTY block at the end of gpg.sh). Also repoints an agent
+    # that was started earlier from a different terminal.
+    if [[ -t 0 ]]; then
+        GPG_TTY="$(tty)"
+        export GPG_TTY
+        gpg-connect-agent updatestartuptty /bye >/dev/null 2>&1 || true
+    fi
+
     echo
     echo "  ┌─────────────────────────────────────────────────────────────────┐"
     if [[ "${context}" == "new" ]]; then
@@ -121,6 +132,20 @@ _gpg_passphrase_ready_check() {
     fi
     echo
     return 0
+}
+
+# _gpg_pinentry_cancel_hint <gpg_output>
+# When gpg's output shows the passphrase prompt was cancelled, explain the
+# usual cause: pinentry could not reach a terminal. Prints nothing otherwise.
+_gpg_pinentry_cancel_hint() {
+    case "${1:-}" in
+        *"Operation cancelled"*)
+            log_warn "pinentry could not prompt for the passphrase"
+            log_warn "  GPG_TTY is currently: ${GPG_TTY:-<unset>}"
+            log_warn "  In an interactive terminal, run: export GPG_TTY=\"\$(tty)\""
+            log_warn "  then: gpg-connect-agent updatestartuptty /bye"
+            ;;
+    esac
 }
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -1561,7 +1586,10 @@ gpg-import() {
 
     _gpg_passphrase_ready_check "enter" || return 1
     log_info "Importing key from: ${file}"
-    gpg --import "${file}"
+    local gpg_output
+    gpg_output="$(gpg --import "${file}" 2>&1)"
+    printf '%s\n' "${gpg_output}"
+    _gpg_pinentry_cancel_hint "${gpg_output}"
 
     echo
     log_info "Imported. Current secret keys:"
@@ -1614,8 +1642,11 @@ if match:
     log_info "Importing key..."
     # Straight from memory to gpg on stdin — no plaintext file (security
     # review M6). The passphrase prompt comes from pinentry, not stdin.
-    printf '%s\n' "${note_content}" | gpg --import
-    local rc=$?
+    local gpg_output rc
+    gpg_output="$(printf '%s\n' "${note_content}" | gpg --import 2>&1)"
+    rc=$?
+    printf '%s\n' "${gpg_output}"
+    _gpg_pinentry_cancel_hint "${gpg_output}"
 
     # shellcheck disable=SC2015
     [[ ${rc} -eq 0 ]] && log_info "Import complete" || log_error "Import failed"
@@ -1680,8 +1711,11 @@ for i, item in enumerate(gpg_items):
     log_info "Importing key..."
     # Straight from memory to gpg on stdin — no plaintext file (security
     # review M6). The passphrase prompt comes from pinentry, not stdin.
-    printf '%s\n' "${note_content}" | gpg --import
-    local rc=$?
+    local gpg_output rc
+    gpg_output="$(printf '%s\n' "${note_content}" | gpg --import 2>&1)"
+    rc=$?
+    printf '%s\n' "${gpg_output}"
+    _gpg_pinentry_cancel_hint "${gpg_output}"
 
     # shellcheck disable=SC2015
     [[ ${rc} -eq 0 ]] && log_info "Import complete" || log_error "Import failed"
