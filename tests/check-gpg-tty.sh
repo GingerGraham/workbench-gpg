@@ -140,24 +140,33 @@ else
     fail "hint printed for unrelated output: '${hint}'"
 fi
 
-# ── Terminal path (needs a pty; skipped where `script` is unavailable) ──────
+# ── Terminal path (needs a pty; skipped where `script` can't provide one) ───
 
+# GNU script takes -c <command>; BSD/macOS script takes <file> <command...>.
+# Try each form and judge the result only if the child actually ran.
+pty_result=""
 if command -v script >/dev/null 2>&1; then
-    pty_out="${work}/pty.out"
     cat > "${work}/pty.sh" <<PTY
 PATH='${work}':\$PATH
 source '${work}/stubs.sh'
 source '${GPG_SH}'
 echo "RESULT=[\${GPG_TTY:-}]"
 PTY
+    pty_out="${work}/pty.out"
     script -qec "bash '${work}/pty.sh'" /dev/null > "${pty_out}" 2>&1 < /dev/null || true
-    if grep -qE 'RESULT=\[/dev/(pts/[0-9]+|tty[A-Za-z0-9]*)\]' "${pty_out}"; then
-        ok "terminal stdin: GPG_TTY is set to the real device path"
-    else
-        fail "terminal stdin: GPG_TTY not set to a device path ($(tr -d '\r' < "${pty_out}" | tail -1))"
+    pty_result="$(tr -d '\r' < "${pty_out}" | grep '^RESULT=' | tail -1)"
+    if [[ -z "${pty_result}" ]]; then
+        script -q /dev/null bash "${work}/pty.sh" > "${pty_out}" 2>&1 < /dev/null || true
+        pty_result="$(tr -d '\r' < "${pty_out}" | grep '^RESULT=' | tail -1)"
     fi
+fi
+
+if [[ -z "${pty_result}" ]]; then
+    echo "SKIP: no usable 'script' for a pty; terminal-path check not run"
+elif [[ "${pty_result}" =~ ^RESULT=\[/dev/[A-Za-z0-9/]+\]$ ]]; then
+    ok "terminal stdin: GPG_TTY is set to the real device path"
 else
-    echo "SKIP: no 'script' available; terminal-path check not run"
+    fail "terminal stdin: GPG_TTY not set to a device path (${pty_result})"
 fi
 
 echo "==============================="
