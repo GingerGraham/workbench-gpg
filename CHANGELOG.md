@@ -4,6 +4,8 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-28
+
 ### Fixed
 
 - **`GPG_TTY` is no longer exported as the literal `not a tty`.** When
