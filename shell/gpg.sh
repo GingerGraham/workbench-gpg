@@ -496,9 +496,13 @@ gpg-agent-restart() {
     gpgconf --kill gpg-agent
     gpg-agent --daemon --quiet 2>/dev/null || true
     log_info "GPG agent restarted"
-    # Re-export the socket path in case it changed
-    export GPG_TTY
-    GPG_TTY="$(tty)"
+    # Re-export the terminal for pinentry. Only when stdin is a terminal:
+    # otherwise `tty` prints "not a tty" to stdout, which would be exported
+    # as if it were a device path.
+    if [[ -t 0 ]]; then
+        GPG_TTY="$(tty)"
+        export GPG_TTY
+    fi
 }
 
 # gpg-agent-forget
@@ -522,6 +526,18 @@ gpg-card-status() {
 }
 
 # ── GPG_TTY export (required for pinentry-curses on non-X11 terminals) ────────
-# This runs at source time so the variable is always set correctly for this session.
-export GPG_TTY
-GPG_TTY="$(tty 2>/dev/null || echo '')"
+# This runs at source time so the variable is set correctly for this session.
+# Only trust `tty` when stdin is a terminal: otherwise it prints "not a tty"
+# to stdout (redirecting stderr doesn't hide that), and gpg would hand that
+# string to pinentry as a device path. The loader can source this file with
+# stdin redirected, so an unset GPG_TTY here is normal; the passphrase gate
+# in gpg-management.sh sets it at call time, when stdin is the terminal.
+if [[ -t 0 ]]; then
+    GPG_TTY="$(tty)"
+elif [[ "${GPG_TTY:-}" == "not a tty" ]]; then
+    # Left over from an earlier shell that captured the bad value.
+    unset GPG_TTY
+fi
+if [[ -n "${GPG_TTY:-}" ]]; then
+    export GPG_TTY
+fi
