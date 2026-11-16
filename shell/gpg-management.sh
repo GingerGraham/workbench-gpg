@@ -46,7 +46,7 @@
 # ── Function availability predicates ──────────────────────────────────────────
 # Consumed automatically by _get_functions_in/_get_aliases_in
 # (workbench-core) to hide functions that can't actually be used on this
-# host. See workbench-core's docs/module-authoring.md, "Declaring
+# host. See workbench-core's docs/guide/module-authoring.md, "Declaring
 # function availability". gpg-push-github/gpg-push-gitlab's predicates
 # are declared in gpg.sh alongside gpg-github-keys/gpg-gitlab-keys —
 # predicates are just functions, sourced eagerly regardless of which

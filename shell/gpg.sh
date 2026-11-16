@@ -26,7 +26,7 @@
 # Function availability predicates — consumed automatically by
 # _get_functions_in/_get_aliases_in (workbench-core) to hide functions
 # that can't actually be used on this host. See workbench-core's
-# docs/module-authoring.md, "Declaring function availability".
+# docs/guide/module-authoring.md, "Declaring function availability".
 #
 # Declared here, *before* the `command -v gpg` guard below, not after:
 # on a host without gpg, that guard returns out of this file immediately,
