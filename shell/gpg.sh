@@ -85,8 +85,8 @@ gpg-list-secret() {
 
 # ── Aliases ───────────────────────────────────────────────────────────────────
 
-alias gpg-ls="gpg-list"
-alias gpg-ls-secret="gpg-list-secret"
+workbench_alias_define gpg-ls gpg "gpg-list"
+workbench_alias_define gpg-ls-secret gpg "gpg-list-secret"
 
 # gpg-list-signing-keys
 # List signing-capable (sub)keys in a format suitable for use with git-add-project.

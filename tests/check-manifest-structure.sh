@@ -47,10 +47,10 @@ done
 
 # Core API 1.8 (workbench-core v2.21.0, D89) generates get-gpg-functions
 # from register.getters[]; this module relies on that.
-if [[ -n "${MANIFEST}" ]] && grep -qxF 'core_api: ">=1.8 <2.0"' "${MANIFEST}"; then
-    ok "manifest declares core_api: \">=1.8 <2.0\""
+if [[ -n "${MANIFEST}" ]] && grep -qxF 'core_api: ">=1.10 <2.0"' "${MANIFEST}"; then
+    ok "manifest declares core_api: \">=1.10 <2.0\""
 else
-    fail "manifest core_api is not \">=1.8 <2.0\""
+    fail "manifest core_api is not \">=1.10 <2.0\""
 fi
 
 if [[ -n "${MANIFEST}" ]] && grep -qE '^[[:space:]]*function:[[:space:]]*get-gpg-functions[[:space:]]*$' "${MANIFEST}"; then
