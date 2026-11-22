@@ -4,6 +4,8 @@ All notable changes to `workbench-gpg` are documented here.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-22
+
 ### Fixed
 
 - **The `gpg-ls` and `gpg-ls-secret` aliases no longer replace an alias or function you already
