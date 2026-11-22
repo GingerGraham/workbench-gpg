@@ -256,7 +256,7 @@ Common use cases:
 
 - GitHub noreply address: `<id>+username@users.noreply.github.com`
 - GitLab noreply address: `<id>-<username>@users.noreply.gitlab.com`
-- Work email alias
+- Work email alias An alias is not defined when your shell already has an alias or function of that name; yours is kept, and `wb status` lists what was left alone.
 - Alternate personal address
 
 Both GitHub and GitLab verify signed commits against **any UID on the
