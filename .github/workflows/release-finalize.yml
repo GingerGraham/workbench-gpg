@@ -14,7 +14,7 @@ jobs:
     if: |
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'release/v')
-    uses: GingerGraham/workbench-core/.github/workflows/module-release-finalize.yml@v2.26.2
+    uses: GingerGraham/workbench-core/.github/workflows/module-release-finalize.yml@v2.30.1
     permissions:
       contents: read
     secrets:
